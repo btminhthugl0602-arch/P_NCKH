@@ -2,6 +2,9 @@
 if (!defined('_AUTHEN')) {
     die('Truy cập không hợp lệ');
 }
+layout('header');
+layout('navbar');
+?>
   <main class="main">
 
     <!-- Page Title -->
@@ -70,3 +73,4 @@ if (!defined('_AUTHEN')) {
     </section><!-- /Enroll Section -->
 
   </main>
+  <?php layout('footer');
