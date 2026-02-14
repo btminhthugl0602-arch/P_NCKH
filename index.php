@@ -6,7 +6,7 @@ require_once('config.php');
 require_once('./modules/function/db_connect.php');
 require_once('./modules/function/base.php');
 require_once('./modules/function/session.php');
-require_once('./template/layouts/index.php');
+
 
 
 $module = _MODULES;
