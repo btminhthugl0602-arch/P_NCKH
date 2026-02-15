@@ -33,7 +33,7 @@ layout('navbar');
                         <div class="hero-content">
                             <div class="course-badge">
                                 <span class="category">Chủ đề</span>
-                                <span class="level">Advanced</span>
+                                <span class="level">Cấp: Khoa</span>
                             </div>
                             <h1>Tên sự kiện</h1>
                             <p class="course-subtitle">Mô tả: Master modern web development with React, Node.js, and
@@ -172,121 +172,36 @@ layout('navbar');
                             </div><!-- End Overview Tab -->
 
                             <!-- Curriculum Tab -->
+
+
                             <div class="tab-pane fade" id="course-detailscurriculum" role="tabpanel">
 
-                                <div class="curriculum-overview">
-                                    <div class="curriculum-stats">
-                                        <div class="stat">
-                                            <i class="bi bi-collection-play"></i>
-                                            <span>12 Sections</span>
-                                        </div>
-                                        <div class="stat">
-                                            <i class="bi bi-play-circle"></i>
-                                            <span>89 Lectures</span>
-                                        </div>
-                                        <div class="stat">
-                                            <i class="bi bi-clock"></i>
-                                            <span>45h 32m</span>
-                                        </div>
-                                    </div>
-                                </div>
+                                <ul class="nav nav-tabs" id="course-detailsCourseTab" role="tablist">
+                                    <li class="nav-item">
+                                        <button class="nav-link active" id="course-detailsoverview-tab"
+                                            data-bs-toggle="tab" data-bs-target="#course-detailsoverview" type="button"
+                                            role="tab">
+                                            <i class="bi bi-layout-text-window-reverse"></i>
+                                            Thông tin
+                                        </button>
+                                    </li>
+                                    <li class="nav-item">
+                                        <button class="nav-link" id="course-detailscurriculum-tab" data-bs-toggle="tab"
+                                            data-bs-target="#course-detailscurriculum" type="button" role="tab">
+                                            <i class="bi bi-list-ul"></i>
+                                            Vòng thi
+                                        </button>
+                                    </li>
+                                    <li class="nav-item">
+                                        <button class="nav-link" id="course-detailsreviews-tab" data-bs-toggle="tab"
+                                            data-bs-target="#course-detailsreviews" type="button" role="tab">
+                                            <i class="bi bi-star"></i>
+                                            Reviews
+                                        </button>
+                                    </li>
+                                </ul>
 
-                                <div class="accordion" id="curriculumAccordion">
 
-                                    <div class="accordion-item curriculum-module">
-                                        <h2 class="accordion-header">
-                                            <button class="accordion-button" type="button" data-bs-toggle="collapse"
-                                                data-bs-target="#module1">
-                                                <div class="module-info">
-                                                    <span class="module-title">JavaScript Fundamentals &amp; ES6+</span>
-                                                    <span class="module-meta">8 lessons • 4h 15m</span>
-                                                </div>
-                                            </button>
-                                        </h2>
-                                        <div id="module1" class="accordion-collapse collapse show"
-                                            data-bs-parent="#curriculumAccordion">
-                                            <div class="accordion-body">
-                                                <div class="lessons-list">
-                                                    <div class="lesson">
-                                                        <i class="bi bi-play-circle"></i>
-                                                        <span class="lesson-title">Variables, Functions and Scope</span>
-                                                        <span class="lesson-time">28 min</span>
-                                                    </div>
-                                                    <div class="lesson">
-                                                        <i class="bi bi-play-circle"></i>
-                                                        <span class="lesson-title">Arrow Functions and
-                                                            Destructuring</span>
-                                                        <span class="lesson-time">35 min</span>
-                                                    </div>
-                                                    <div class="lesson">
-                                                        <i class="bi bi-file-earmark-text"></i>
-                                                        <span class="lesson-title">Promises and Async/Await</span>
-                                                        <span class="lesson-time">42 min</span>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div class="accordion-item curriculum-module">
-                                        <h2 class="accordion-header">
-                                            <button class="accordion-button collapsed" type="button"
-                                                data-bs-toggle="collapse" data-bs-target="#module2">
-                                                <div class="module-info">
-                                                    <span class="module-title">React Development Deep Dive</span>
-                                                    <span class="module-meta">12 lessons • 7h 45m</span>
-                                                </div>
-                                            </button>
-                                        </h2>
-                                        <div id="module2" class="accordion-collapse collapse"
-                                            data-bs-parent="#curriculumAccordion">
-                                            <div class="accordion-body">
-                                                <div class="lessons-list">
-                                                    <div class="lesson">
-                                                        <i class="bi bi-play-circle"></i>
-                                                        <span class="lesson-title">Components and JSX Syntax</span>
-                                                        <span class="lesson-time">32 min</span>
-                                                    </div>
-                                                    <div class="lesson">
-                                                        <i class="bi bi-play-circle"></i>
-                                                        <span class="lesson-title">State Management with Hooks</span>
-                                                        <span class="lesson-time">48 min</span>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div class="accordion-item curriculum-module">
-                                        <h2 class="accordion-header">
-                                            <button class="accordion-button collapsed" type="button"
-                                                data-bs-toggle="collapse" data-bs-target="#module3">
-                                                <div class="module-info">
-                                                    <span class="module-title">Node.js &amp; Server Development</span>
-                                                    <span class="module-meta">15 lessons • 8h 20m</span>
-                                                </div>
-                                            </button>
-                                        </h2>
-                                        <div id="module3" class="accordion-collapse collapse"
-                                            data-bs-parent="#curriculumAccordion">
-                                            <div class="accordion-body">
-                                                <div class="lessons-list">
-                                                    <div class="lesson">
-                                                        <i class="bi bi-play-circle"></i>
-                                                        <span class="lesson-title">Express.js Server Setup</span>
-                                                        <span class="lesson-time">25 min</span>
-                                                    </div>
-                                                    <div class="lesson">
-                                                        <i class="bi bi-file-earmark-text"></i>
-                                                        <span class="lesson-title">Building RESTful APIs</span>
-                                                        <span class="lesson-time">55 min</span>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                </div>
 
                             </div><!-- End Curriculum Tab -->
 
