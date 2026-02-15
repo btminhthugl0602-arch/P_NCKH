@@ -171,9 +171,7 @@ layout('navbar');
 
                             </div><!-- End Thông tin Tab -->
 
-                            <!-- Nhóm -->
-
-
+                            <!-- Nhóm Tab -->
                             <div class="tab-pane fade" id="event-groups" role="tabpanel">
 
                                 <div class="course-nav-tabs" data-aos="fade-up" data-aos-delay="300">
@@ -192,7 +190,6 @@ layout('navbar');
                                                 Nhóm của tôi
                                             </button>
                                         </li>
-
                                     </ul>
 
                                     <div class="tab-content" id="course-detailsCourseTabContent">
@@ -366,7 +363,7 @@ layout('navbar');
 
                                             </section><!-- /Courses 2 Section -->
 
-                                        </div><!-- Tất cả nhóm Tab -->
+                                        </div><!-- End Tất cả nhóm Tab -->
 
                                         <!-- Nhóm của tôi Tab -->
                                         <div class="tab-pane fade" id="my-groups" role="tabpanel">
@@ -499,206 +496,167 @@ layout('navbar');
                                                                     </div>
 
                                                                 </div>
-                                                            </div>
+                                                            </div><!-- End Courses Grid -->
 
-                                                        </div><!-- Nhóm của tôi Tab -->
-
-
-
-                                                    </div>
-                                                </div><!-- End Course Navigation Tabs -->
-
-
-                                        </div><!-- End Nhóm Tab -->
-
-                                        <!-- Cấu hình Tab -->
-                                        <div class="tab-pane fade" id="event-config" role="tabpanel">
-
-                                            <div class="reviews-summary">
-                                                <div class="rating-overview">
-                                                    <div class="overall-rating">
-                                                        <div class="rating-number">4.8</div>
-                                                        <div class="rating-stars">
-                                                            <i class="bi bi-star-fill"></i>
-                                                            <i class="bi bi-star-fill"></i>
-                                                            <i class="bi bi-star-fill"></i>
-                                                            <i class="bi bi-star-fill"></i>
-                                                            <i class="bi bi-star-half"></i>
                                                         </div>
-                                                        <div class="rating-text">1,247 reviews</div>
                                                     </div>
-                                                </div>
-                                            </div>
 
-                                            <div class="reviews-list">
-                                                <div class="review-item">
-                                                    <div class="reviewer-info">
-                                                        <img src="?/<?php echo _HOST_URL_TEMPLATES ?>/assets/img/person/person-f-12.webp"
-                                                            alt="Reviewer" class="reviewer-avatar">
-                                                        <div class="reviewer-details">
-                                                            <h6>Jessica Chen</h6>
-                                                            <div class="review-rating">
-                                                                <i class="bi bi-star-fill"></i>
-                                                                <i class="bi bi-star-fill"></i>
-                                                                <i class="bi bi-star-fill"></i>
-                                                                <i class="bi bi-star-fill"></i>
-                                                                <i class="bi bi-star-fill"></i>
-                                                            </div>
-                                                        </div>
-                                                        <span class="review-date">2 weeks ago</span>
-                                                    </div>
-                                                    <p class="review-text">Excepteur sint occaecat cupidatat non
-                                                        proident, sunt in
-                                                        culpa qui officia deserunt mollit anim id est laborum. The
-                                                        instructor
-                                                        explains complex concepts very clearly.</p>
                                                 </div>
 
-                                                <div class="review-item">
-                                                    <div class="reviewer-info">
-                                                        <img src="?/<?php echo _HOST_URL_TEMPLATES ?>/assets/img/person/person-m-5.webp"
-                                                            alt="Reviewer" class="reviewer-avatar">
-                                                        <div class="reviewer-details">
-                                                            <h6>David Thompson</h6>
-                                                            <div class="review-rating">
-                                                                <i class="bi bi-star-fill"></i>
-                                                                <i class="bi bi-star-fill"></i>
-                                                                <i class="bi bi-star-fill"></i>
-                                                                <i class="bi bi-star-fill"></i>
-                                                                <i class="bi bi-star"></i>
-                                                            </div>
-                                                        </div>
-                                                        <span class="review-date">1 month ago</span>
-                                                    </div>
-                                                    <p class="review-text">Lorem ipsum dolor sit amet, consectetur
-                                                        adipiscing elit.
-                                                        Great practical examples and real-world projects that helped me
-                                                        understand
-                                                        the concepts better.</p>
-                                                </div>
+                                            </section><!-- /Courses 2 Section -->
 
-                                            </div>
+                                        </div><!-- End Nhóm của tôi Tab -->
 
-                                        </div><!-- Cấu hình Tab -->
+                                    </div><!-- End course-detailsCourseTabContent -->
+                                </div><!-- End course-nav-tabs inner -->
 
-                                    </div>
-                                </div><!-- End Sự kiện Tabs -->
+                            </div><!-- End event-groups tab-pane -->
 
+                            <!-- Cấu hình Tab -->
+                            <div class="tab-pane fade" id="event-config" role="tabpanel">
+                                <div class="event-config-content" data-aos="fade-up" data-aos-delay="100">
+                                    <h3>Cấu hình sự kiện</h3>
+                                    <p>Đây là nơi bạn có thể cấu hình các thiết lập liên quan đến sự kiện, bao gồm:</p>
+                                    <ul>
+                                        <li><strong>Thông tin cơ bản:</strong> <button
+                                                class="btn btn-primary">Nút1</button>
+                                        </li>
+                                        <li><strong>Phân công phản biện</strong> <button
+                                                class="btn btn-primary">Nút2</button></li>
+                                        <li><strong>Thống kê bài nộp</strong> <button
+                                                class="btn btn-primary">Nút3</button></li>
+                                        <li><strong>Quản lý tiểu ban</strong> <button class="btn btn-primary">
+                                                Nút4</button></li>
+                                        <li><strong>Phân công BGK</strong> <button class="btn btn-primary">Nút5</button>
+                                        </li>
+                                        <li><strong>Trao giải</strong> <button class="btn btn-primary">Nút6</button>
+                                        </li>
+                                    </ul>
+                                    <p>Sau khi cấu hình xong, đừng quên lưu lại để áp dụng các thay đổi!<button
+                                            class="btn btn-primary">Lưu</button></p>
+
+
+                                </div><!-- End Cấu hình Tab -->
+
+                            </div><!-- End EventDetailsContent -->
+                        </div><!-- End course-nav-tabs -->
+
+                    </div><!-- End col-lg-8 -->
+
+                    <div class="col-lg-4">
+
+                        <!-- Enrollment Card -->
+                        <div class="enrollment-card d-none" data-aos="fade-up" data-aos-delay="200">
+
+                            <div class="card-header">
+                                <div class="price-display">
+                                    <span class="current-price">$149</span>
+                                    <span class="original-price">$249</span>
+                                    <span class="discount">40% OFF</span>
+                                </div>
+                                <div class="enrollment-count">
+                                    <i class="bi bi-people"></i>
+                                    <span>3,892 students enrolled</span>
+                                </div>
                             </div>
 
-                            <div class="col-lg-4">
-
-                                <!-- Enrollment Card -->
-                                <div class="enrollment-card d-none" data-aos="fade-up" data-aos-delay="200">
-
-                                    <div class="card-header">
-                                        <div class="price-display">
-                                            <span class="current-price">$149</span>
-                                            <span class="original-price">$249</span>
-                                            <span class="discount">40% OFF</span>
-                                        </div>
-                                        <div class="enrollment-count">
-                                            <i class="bi bi-people"></i>
-                                            <span>3,892 students enrolled</span>
-                                        </div>
+                            <div class="card-body">
+                                <div class="course-highlights">
+                                    <div class="highlight-item">
+                                        <i class="bi bi-trophy"></i>
+                                        <span>Certificate included</span>
                                     </div>
-
-                                    <div class="card-body">
-                                        <div class="course-highlights">
-                                            <div class="highlight-item">
-                                                <i class="bi bi-trophy"></i>
-                                                <span>Certificate included</span>
-                                            </div>
-                                            <div class="highlight-item">
-                                                <i class="bi bi-clock-history"></i>
-                                                <span>45 hours content</span>
-                                            </div>
-                                            <div class="highlight-item">
-                                                <i class="bi bi-download"></i>
-                                                <span>Downloadable resources</span>
-                                            </div>
-                                            <div class="highlight-item">
-                                                <i class="bi bi-infinity"></i>
-                                                <span>Lifetime access</span>
-                                            </div>
-                                            <div class="highlight-item">
-                                                <i class="bi bi-phone"></i>
-                                                <span>Mobile access</span>
-                                            </div>
-                                        </div>
-
-                                        <div class="action-buttons">
-                                            <button class="btn-primary">Enroll Now</button>
-                                            <button class="btn-secondary">Add to Wishlist</button>
-                                        </div>
-
-                                        <div class="guarantee">
-                                            <i class="bi bi-shield-check"></i>
-                                            <span>30-day money-back guarantee</span>
-                                        </div>
+                                    <div class="highlight-item">
+                                        <i class="bi bi-clock-history"></i>
+                                        <span>45 hours content</span>
                                     </div>
-
-                                </div><!-- End Enrollment Card -->
-
-                                <!-- Course Details -->
-                                <div class="course-details-card" data-aos="fade-up" data-aos-delay="300">
-                                    <h4>Course Details</h4>
-
-                                    <div class="detail-grid">
-                                        <div class="detail-row">
-                                            <span class="detail-label">Duration</span>
-                                            <span class="detail-value">16 weeks</span>
-                                        </div>
-                                        <div class="detail-row">
-                                            <span class="detail-label">Skill Level</span>
-                                            <span class="detail-value">Intermediate</span>
-                                        </div>
-                                        <div class="detail-row">
-                                            <span class="detail-label">Language</span>
-                                            <span class="detail-value">English</span>
-                                        </div>
-                                        <div class="detail-row">
-                                            <span class="detail-label">Quizzes</span>
-                                            <span class="detail-value">24</span>
-                                        </div>
-                                        <div class="detail-row">
-                                            <span class="detail-label">Assignments</span>
-                                            <span class="detail-value">8 projects</span>
-                                        </div>
-                                        <div class="detail-row">
-                                            <span class="detail-label">Updated</span>
-                                            <span class="detail-value">December 2024</span>
-                                        </div>
+                                    <div class="highlight-item">
+                                        <i class="bi bi-download"></i>
+                                        <span>Downloadable resources</span>
                                     </div>
-                                </div><!-- End Course Details -->
-
-                                <!-- Share Course -->
-                                <div class="share-course-card" data-aos="fade-up" data-aos-delay="400">
-                                    <h4>Share This Course</h4>
-                                    <div class="social-links">
-                                        <a href="#" class="social-link facebook">
-                                            <i class="bi bi-facebook"></i>
-                                        </a>
-                                        <a href="#" class="social-link twitter">
-                                            <i class="bi bi-twitter"></i>
-                                        </a>
-                                        <a href="#" class="social-link linkedin">
-                                            <i class="bi bi-linkedin"></i>
-                                        </a>
-                                        <a href="#" class="social-link email">
-                                            <i class="bi bi-envelope"></i>
-                                        </a>
+                                    <div class="highlight-item">
+                                        <i class="bi bi-infinity"></i>
+                                        <span>Lifetime access</span>
                                     </div>
-                                </div><!-- End Share Course -->
+                                    <div class="highlight-item">
+                                        <i class="bi bi-phone"></i>
+                                        <span>Mobile access</span>
+                                    </div>
+                                </div>
 
+                                <div class="action-buttons">
+                                    <button class="btn-primary">Enroll Now</button>
+                                    <button class="btn-secondary">Add to Wishlist</button>
+                                </div>
+
+                                <div class="guarantee">
+                                    <i class="bi bi-shield-check"></i>
+                                    <span>30-day money-back guarantee</span>
+                                </div>
                             </div>
 
-                        </div>
+                        </div><!-- End Enrollment Card -->
 
-                    </div>
+                        <!-- Course Details -->
+                        <div class="course-details-card" data-aos="fade-up" data-aos-delay="300">
+                            <h4>Course Details</h4>
+
+                            <div class="detail-grid">
+                                <div class="detail-row">
+                                    <span class="detail-label">Duration</span>
+                                    <span class="detail-value">16 weeks</span>
+                                </div>
+                                <div class="detail-row">
+                                    <span class="detail-label">Skill Level</span>
+                                    <span class="detail-value">Intermediate</span>
+                                </div>
+                                <div class="detail-row">
+                                    <span class="detail-label">Language</span>
+                                    <span class="detail-value">English</span>
+                                </div>
+                                <div class="detail-row">
+                                    <span class="detail-label">Quizzes</span>
+                                    <span class="detail-value">24</span>
+                                </div>
+                                <div class="detail-row">
+                                    <span class="detail-label">Assignments</span>
+                                    <span class="detail-value">8 projects</span>
+                                </div>
+                                <div class="detail-row">
+                                    <span class="detail-label">Updated</span>
+                                    <span class="detail-value">December 2024</span>
+                                </div>
+                            </div>
+                        </div><!-- End Course Details -->
+
+                        <!-- Share Course -->
+                        <div class="share-course-card" data-aos="fade-up" data-aos-delay="400">
+                            <h4>Share This Course</h4>
+                            <div class="social-links">
+                                <a href="#" class="social-link facebook">
+                                    <i class="bi bi-facebook"></i>
+                                </a>
+                                <a href="#" class="social-link twitter">
+                                    <i class="bi bi-twitter"></i>
+                                </a>
+                                <a href="#" class="social-link linkedin">
+                                    <i class="bi bi-linkedin"></i>
+                                </a>
+                                <a href="#" class="social-link email">
+                                    <i class="bi bi-envelope"></i>
+                                </a>
+                            </div>
+                        </div><!-- End Share Course -->
+
+                    </div><!-- End col-lg-4 -->
+
+                </div><!-- End row -->
+
+            </div><!-- End container -->
 
     </section><!-- /Course Details Section -->
 
 </main>
 <?php
-layout('footer'); ?>
+layout('footer');
+?>
