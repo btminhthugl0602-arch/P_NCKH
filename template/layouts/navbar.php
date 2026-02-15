@@ -17,7 +17,6 @@ if (!defined('_AUTHEN')) {
       <nav id="navmenu" class="navmenu">
         <ul>
           <li><a href="index.html">Home</a></li>
-          <li><a href="about.html">Tổng quan</a></li>
           <li><a href="events.html">Sự kiện</a></li>
           <li><a href="instructors.html">Người dùng</a></li>
           <li class="dropdown"><a href="#"><span>Quản trị hệ thống</span> <i class="bi bi-chevron-down toggle-dropdown"></i></a>

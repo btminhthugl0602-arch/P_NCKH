@@ -2,17 +2,8 @@
 if (!defined('_AUTHEN')) {
     die('Truy cập không hợp lệ');
 }
-// Kiểm tra đăng nhập
-if (!isset($_SESSION['user_id']) || empty($_SESSION['user_id'])) {
-  header("Location: " . _HOST_URL . "?module=auth&action=login");
-  exit();
-}
-$active_page = 'dashboard';
-$data = [
-  'page_title' => 'Dashboard'
-];
-// Include header
-layout('header', $data);
+layout('header');
+layout('navbar');
 ?>
 <main class="main">
 
@@ -45,18 +36,6 @@ và theo dõi tiến độ các cuộc thi, sự kiện nghiên cứu khoa học
                 </div>
 
                 <div class="hero-features">
-                  <div class="feature">
-                    <i class="bi bi-shield-check"></i>
-                    <span>Certified Programs</span>
-                  </div>
-                  <div class="feature">
-                    <i class="bi bi-clock"></i>
-                    <span>Lifetime Access</span>
-                  </div>
-                  <div class="feature">
-                    <i class="bi bi-people"></i>
-                    <span>Expert Instructors</span>
-                  </div>
                 </div>
               </div>
             </div>
@@ -64,13 +43,14 @@ và theo dõi tiến độ các cuộc thi, sự kiện nghiên cứu khoa học
             <div class="col-lg-6" data-aos="fade-up" data-aos-delay="200">
               <div class="hero-image">
                 <div class="main-image">
-                  <img src="<?php echo _HOST_URL_TEMPLATES ?>/assets/img/anh1.jpg" alt="Online Learning" class="img-fluid">
+                  <!-- <img src="<?php echo _HOST_URL_TEMPLATES ?>/assets/img/images.png" alt="Online Learning" class="img-fluid"> -->
+                   <img src="http://localhost/P_NCKH/template/assets/img/images.png">
                 </div>
 
                 <div class="floating-cards">
                   <div class="course-card" data-aos="fade-up" data-aos-delay="300">
                     <div class="card-icon">
-                      <i class="bi bi-code-slash"></i>
+                      
                     </div>
                     <div class="card-content">
                       <h6>Hội nghị ghiên cứu khoa học</h6>
@@ -79,7 +59,7 @@ và theo dõi tiến độ các cuộc thi, sự kiện nghiên cứu khoa học
 
                   <div class="course-card" data-aos="fade-up" data-aos-delay="400">
                     <div class="card-icon">
-                      <i class="bi bi-palette"></i>
+                  
                     </div>
                     <div class="card-content">
                       <h6>Hội thảo khoa học</h6>
@@ -88,7 +68,7 @@ và theo dõi tiến độ các cuộc thi, sự kiện nghiên cứu khoa học
 
                   <div class="course-card" data-aos="fade-up" data-aos-delay="500">
                     <div class="card-icon">
-                      <i class="bi bi-graph-up"></i>
+            
                     </div>
                     <div class="card-content">
                       <h6>Tranh biện</h6>
@@ -128,7 +108,7 @@ và theo dõi tiến độ các cuộc thi, sự kiện nghiên cứu khoa học
           <div class="col-lg-4 col-md-6" data-aos="fade-up" data-aos-delay="200">
             <div class="course-card">
               <div class="course-image">
-                <img src="assets/img/education/students-9.webp" alt="Course" class="img-fluid">
+                <img src="http://localhost/P_NCKH/template/assets/img/images.png">
                 <div class="badge featured">Featured</div>
                 <div class="price-badge">$149</div>
               </div>
@@ -140,7 +120,7 @@ và theo dõi tiến độ các cuộc thi, sự kiện nghiên cứu khoa học
                 <h3><a href="#">Digital Marketing Fundamentals</a></h3>
                 <p>Lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod tempor incididunt ut labore et dolore magna aliqua enim ad minim veniam.</p>
                 <div class="instructor">
-                  <img src="assets/img/person/person-f-3.webp" alt="Instructor" class="instructor-img">
+                
                   <div class="instructor-info">
                     <h6>Sarah Johnson</h6>
                     <span>Marketing Expert</span>
@@ -168,7 +148,7 @@ và theo dõi tiến độ các cuộc thi, sự kiện nghiên cứu khoa học
           <div class="col-lg-4 col-md-6" data-aos="fade-up" data-aos-delay="300">
             <div class="course-card">
               <div class="course-image">
-                <img src="assets/img/education/campus-4.webp" alt="Course" class="img-fluid">
+                <img src="http://localhost/P_NCKH/template/assets/img/images.png">
                 <div class="badge new">New</div>
                 <div class="price-badge">$89</div>
               </div>
@@ -180,7 +160,7 @@ và theo dõi tiến độ các cuộc thi, sự kiện nghiên cứu khoa học
                 <h3><a href="#">Web Development with JavaScript</a></h3>
                 <p>Ut enim ad minim veniam quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat duis aute irure dolor in reprehenderit.</p>
                 <div class="instructor">
-                  <img src="assets/img/person/person-m-5.webp" alt="Instructor" class="instructor-img">
+             
                   <div class="instructor-info">
                     <h6>Michael Chen</h6>
                     <span>Full Stack Developer</span>
@@ -208,7 +188,7 @@ và theo dõi tiến độ các cuộc thi, sự kiện nghiên cứu khoa học
           <div class="col-lg-4 col-md-6" data-aos="fade-up" data-aos-delay="400">
             <div class="course-card">
               <div class="course-image">
-                <img src="assets/img/education/students-7.webp" alt="Course" class="img-fluid">
+                <img src="http://localhost/P_NCKH/template/assets/img/images.png">
                 <div class="badge certificate">Certificate</div>
                 <div class="price-badge">Free</div>
               </div>
@@ -220,7 +200,7 @@ và theo dõi tiến độ các cuộc thi, sự kiện nghiên cứu khoa học
                 <h3><a href="#">Introduction to Data Science</a></h3>
                 <p>Excepteur sint occaecat cupidatat non proident sunt in culpa qui officia deserunt mollit anim id est laborum sed ut perspiciatis unde omnis.</p>
                 <div class="instructor">
-                  <img src="assets/img/person/person-f-7.webp" alt="Instructor" class="instructor-img">
+               
                   <div class="instructor-info">
                     <h6>Dr. Emily Watson</h6>
                     <span>Data Scientist</span>
@@ -248,9 +228,9 @@ và theo dõi tiến độ các cuộc thi, sự kiện nghiên cứu khoa học
           <div class="col-lg-4 col-md-6" data-aos="fade-up" data-aos-delay="200">
             <div class="course-card">
               <div class="course-image">
-                <img src="assets/img/education/education-5.webp" alt="Course" class="img-fluid">
+                <img src="http://localhost/P_NCKH/template/assets/img/images.png">
                 <div class="badge popular">Popular</div>
-                <div class="price-badge">$199</div>
+                
               </div>
               <div class="course-content">
                 <div class="course-meta">
@@ -260,7 +240,7 @@ và theo dõi tiến độ các cuộc thi, sự kiện nghiên cứu khoa học
                 <h3><a href="#">Business Strategy &amp; Leadership</a></h3>
                 <p>Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium totam rem aperiam eaque ipsa quae ab illo.</p>
                 <div class="instructor">
-                  <img src="assets/img/person/person-m-8.webp" alt="Instructor" class="instructor-img">
+                
                   <div class="instructor-info">
                     <h6>Robert Anderson</h6>
                     <span>Business Consultant</span>
@@ -288,7 +268,7 @@ và theo dõi tiến độ các cuộc thi, sự kiện nghiên cứu khoa học
           <div class="col-lg-4 col-md-6" data-aos="fade-up" data-aos-delay="300">
             <div class="course-card">
               <div class="course-image">
-                <img src="assets/img/education/activities-3.webp" alt="Course" class="img-fluid">
+                <img src="http://localhost/P_NCKH/template/assets/img/images.png">
                 <div class="badge certificate">Certificate</div>
                 <div class="price-badge">$129</div>
               </div>
@@ -300,7 +280,7 @@ và theo dõi tiến độ các cuộc thi, sự kiện nghiên cứu khoa học
                 <h3><a href="#">Graphic Design Masterclass</a></h3>
                 <p>Nemo enim ipsam voluptatem quia voluptas sit aspernatur aut odit aut fugit sed quia consequuntur magni dolores eos qui ratione voluptatem.</p>
                 <div class="instructor">
-                  <img src="assets/img/person/person-f-12.webp" alt="Instructor" class="instructor-img">
+
                   <div class="instructor-info">
                     <h6>Lisa Martinez</h6>
                     <span>Creative Director</span>
@@ -328,19 +308,21 @@ và theo dõi tiến độ các cuộc thi, sự kiện nghiên cứu khoa học
           <div class="col-lg-4 col-md-6" data-aos="fade-up" data-aos-delay="400">
             <div class="course-card">
               <div class="course-image">
-                <img src="assets/img/education/teacher-6.webp" alt="Course" class="img-fluid">
+                <img src="http://localhost/P_NCKH/template/assets/img/images.png">
                 <div class="badge new">New</div>
-                <div class="price-badge">$99</div>
+                
               </div>
               <div class="course-content">
                 <div class="course-meta">
                   <span class="level">Beginner</span>
                   <span class="duration">5 Weeks</span>
+                  
                 </div>
                 <h3><a href="#">Photography for Beginners</a></h3>
                 <p>At vero eos et accusamus et iusto odio dignissimos ducimus qui blanditiis praesentium voluptatum deleniti atque corrupti quos dolores et quas.</p>
+                
                 <div class="instructor">
-                  <img src="assets/img/person/person-m-11.webp" alt="Instructor" class="instructor-img">
+                  
                   <div class="instructor-info">
                     <h6>James Wilson</h6>
                     <span>Professional Photographer</span>
@@ -570,3 +552,4 @@ và theo dõi tiến độ các cuộc thi, sự kiện nghiên cứu khoa học
         </div>
       </div>
 </main>
+<?php layout('footer') ?>
