@@ -53,9 +53,9 @@ layout('navbar');
                       <button type="submit" class="btn btn-enroll">
                         Đăng nhập
                       </button>
-                      <p class="enrollment-note mt-3">
+                      <a class="enrollment-note mt-3">
                         Đăng nhập với tư cách khách
-                      </p>
+                      </a>
                     </div>
                   </div>
 

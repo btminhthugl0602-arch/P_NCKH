@@ -191,9 +191,9 @@ layout('navbar');
 
                     <!-- Search Widget -->
                     <div class="sidebar-widget search-widget" data-aos="fade-up" data-aos-delay="200">
-                        <h4 class="widget-title">Search Events</h4>
+                        <h4 class="widget-title">Tìm kiếm sự kiện</h4>
                         <form class="search-form">
-                            <input type="text" placeholder="Search events..." class="form-control">
+                            <input type="text" placeholder="Tìm kiếm sự kiện..." class="form-control">
                             <button type="submit" class="search-btn">
                                 <i class="bi bi-search"></i>
                             </button>
@@ -202,34 +202,34 @@ layout('navbar');
 
                     <!-- Filter Widget -->
                     <div class="sidebar-widget filter-widget" data-aos="fade-up" data-aos-delay="300">
-                        <h4 class="widget-title">Filter Events</h4>
+                        <h4 class="widget-title">Lọc sự kiện</h4>
                         <div class="filter-content">
                             <div class="filter-group">
-                                <label class="filter-label">Event Type</label>
+                                <label class="filter-label">Loại sự kiện</label>
                                 <select class="form-select">
-                                    <option value="">All Types</option>
-                                    <option value="webinar">Webinar</option>
-                                    <option value="workshop">Workshop</option>
-                                    <option value="conference">Conference</option>
-                                    <option value="masterclass">Masterclass</option>
+                                    <option value="">Tất cả loại</option>
+                                    <option value="webinar">Công nghệ</option>
+                                    <option value="workshop">Học tập</option>
+                                    <option value="conference">Sắc đẹp</option>
+                                    <option value="masterclass">Cấp Trường</option>
                                 </select>
                             </div>
                             <div class="filter-group">
-                                <label class="filter-label">Date Range</label>
+                                <label class="filter-label">Thời gian</label>
                                 <select class="form-select">
-                                    <option value="">All Dates</option>
-                                    <option value="today">Today</option>
-                                    <option value="week">This Week</option>
-                                    <option value="month">This Month</option>
-                                    <option value="quarter">Next 3 Months</option>
+                                    <option value="">Mọi thời điểm</option>
+                                    <option value="today">Hôm nay</option>
+                                    <option value="week">Tuần này</option>
+                                    <option value="month">Tháng này</option>
+                                    <option value="quarter">3 tháng tới</option>
                                 </select>
                             </div>
                             <div class="filter-group">
-                                <label class="filter-label">Price</label>
+                                <label class="filter-label">Cấp</label>
                                 <select class="form-select">
-                                    <option value="">All Prices</option>
-                                    <option value="free">Free</option>
-                                    <option value="paid">Paid</option>
+                                    <option value="">Tất cả</option>
+                                    <option value="free">Cấp Khoa</option>
+                                    <option value="paid">Cấp Trường</option>
                                 </select>
                             </div>
                             <button class="btn btn-primary filter-apply-btn">Apply Filters</button>

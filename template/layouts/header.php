@@ -9,7 +9,7 @@ if (!defined('_AUTHEN')) {
 <head>
     <meta charset="utf-8">
     <meta content="width=device-width, initial-scale=1.0" name="viewport">
-    <title>Starter Page - Learner Bootstrap Template</title>
+    <title>HỆ THỐNG QUẢN LÝ SỰ KIỆN</title>
     <meta name="description" content="">
     <meta name="keywords" content="">
 
