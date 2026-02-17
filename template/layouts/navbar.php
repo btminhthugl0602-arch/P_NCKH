@@ -1,6 +1,6 @@
 <?php
 if (!defined('_AUTHEN')) {
-  die('Truy cập không hợp lệ');
+    die('Truy cập không hợp lệ');
 }
 ?>
 
@@ -19,11 +19,11 @@ if (!defined('_AUTHEN')) {
                 <ul>
                     <li><a href="<?php echo _HOST_URL; ?>">Trang chủ</a></li>
                     <li><a href="<?php echo _HOST_URL; ?>/?module=event&action=index">Sự kiện</a></li>
-                    <li><a href="<?php echo _HOST_URL; ?>/?module=users&action=index">Người dùng</a></li>
+
                     <li class="dropdown"><a href="#"><span>Quản trị hệ thống</span> <i
                                 class="bi bi-chevron-down toggle-dropdown"></i></a>
                         <ul>
-                            <li><a href="course-details.html">Course Details</a></li>
+                            <li><a href="<?php echo _HOST_URL; ?>/?module=users&action=index">Người dùng</a></li>
                             <li><a href="instructor-profile.html">Instructor Profile</a></li>
                             <li><a href="events.html">Events</a></li>
                             <li><a href="blog-details.html">Blog Details</a></li>
@@ -40,5 +40,4 @@ if (!defined('_AUTHEN')) {
             <a class="btn-getstarted" href="<?php echo _HOST_URL; ?>/?module=auth&action=login">Đăng nhập</a>
 
         </div>
-
     </header>
