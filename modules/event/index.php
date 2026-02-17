@@ -121,57 +121,69 @@ layout('navbar');
                             $badgeClass = 'bg-gradient-dark';
                         }
                     ?>
-                    <article class="event-card" data-aos="fade-up" data-aos-delay="200">
-                        <div class="row g-0">
-                            <div class="col-md-4">
-                                <div class="event-image">
-                                    <img src="<?php echo _HOST_URL_TEMPLATES ?>/assets/img/education/events-3.webp"
-                                        class="img-fluid" alt="Event Image">
-                                    <div class="date-badge">
-                                        <span
-                                            class="day"><?php echo date('d', strtotime($events[0]['ngayBatDau'])); ?></span>
-                                        <span
-                                            class="month"><?php echo date('M', strtotime($events[0]['ngayBatDau'])); ?></span>
+                        <article class="event-card" data-aos="fade-up" data-aos-delay="200">
+                            <div class="row g-0">
+                                <div class="col-md-4">
+                                    <div class="event-image">
+                                        <img src="<?php echo _HOST_URL_TEMPLATES ?>/assets/img/education/events-3.webp"
+                                            class="img-fluid" alt="Event Image">
+                                        <div class="date-badge">
+                                            <span
+                                                class="day"><?php echo date('d', strtotime($events[0]['ngayBatDau'])); ?></span>
+                                            <span
+                                                class="month"><?php echo date('M', strtotime($events[0]['ngayBatDau'])); ?></span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-8">
+                                    <div class="event-content">
+                                        <div class="event-meta">
+                                            <span class="time"><i class="bi bi-clock"></i> <?php echo $ngayBatDau ?> -
+                                                <?php $ngayKetThuc ?></span>
+                                            <span class="location"><i class="bi bi-geo-alt"></i> Online Webinar</span>
+                                        </div>
+                                        <h3 class="event-title">
+                                            <a href="#"><?= htmlspecialchars($event['tenSK']) ?></a>
+                                        </h3>
+                                        <p class="event-description"><?= htmlspecialchars(substr($event['moTa'], 0, 100)) ?>
+                                            <?= strlen($event['moTa']) > 100 ? '...' : '' ?></p>
+                                        <div class="event-footer">
+                                            <div class="instructor">
+                                                <img src="<?php echo _HOST_URL_TEMPLATES ?>/assets/img/person/person-f-8.webp"
+                                                    alt="Instructor" class="instructor-avatar">
+                                                <span>Dr. Sarah Johnson</span>
+                                            </div>
+                                            <div class="event-price">
+                                                <span class="price">$49</span>
+                                            </div>
+                                        </div>
+                                        <div class="event-actions">
+                                            <a href="<?php echo _HOST_URL ?>/?module=event&action=view"
+                                                class="btn btn-primary">Xem
+                                                sự kiện</a>
+                                            <a href="#" class="btn btn-outline">Learn More</a>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
-                            <div class="col-md-8">
-                                <div class="event-content">
-                                    <div class="event-meta">
-                                        <span class="time"><i class="bi bi-clock"></i> <?php echo $ngayBatDau ?> -
-                                            <?php $ngayKetThuc ?></span>
-                                        <span class="location"><i class="bi bi-geo-alt"></i> Online Webinar</span>
-                                    </div>
-                                    <h3 class="event-title">
-                                        <a href="#"><?= htmlspecialchars($event['tenSK']) ?></a>
-                                    </h3>
-                                    <p class="event-description"><?= htmlspecialchars(substr($event['moTa'], 0, 100)) ?>
-                                        <?= strlen($event['moTa']) > 100 ? '...' : '' ?></p>
-                                    <div class="event-footer">
-                                        <div class="instructor">
-                                            <img src="<?php echo _HOST_URL_TEMPLATES ?>/assets/img/person/person-f-8.webp"
-                                                alt="Instructor" class="instructor-avatar">
-                                            <span>Dr. Sarah Johnson</span>
-                                        </div>
-                                        <div class="event-price">
-                                            <span class="price">$49</span>
-                                        </div>
-                                    </div>
-                                    <div class="event-actions">
-                                        <a href="<?php echo _HOST_URL ?>/?module=event&action=view"
-                                            class="btn btn-primary">Xem
-                                            sự kiện</a>
-                                        <a href="#" class="btn btn-outline">Learn More</a>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </article>
+                        </article>
                     <?php endforeach; ?>
                 </div>
 
                 <!-- Sidebar -->
                 <div class="col-lg-4">
+                    <!-- Newsletter Widget -->
+                    <div class="sidebar-widget newsletter-widget" data-aos="fade-up" data-aos-delay="500">
+                        <h4 class="widget-title">Tạo sự kiện mới</h4>
+                        <p>Nhập tên sự kiện và bắt đầu tạo sự kiện.</p>
+                        <form action="" method="post" class="php-email-form newsletter-form">
+                            <input type="email" name="email" placeholder="Tên sự kiện..." required="">
+                            <button type="submit">Tạo sự kiện</button>
+                            <div class="loading">Đang tạo...</div>
+                            <div class="error-message"></div>
+                            <div class="sent-message">Sự kiện đã được tạo thành công!</div>
+                        </form>
+                    </div><!-- End Newsletter Widget -->
 
                     <!-- Search Widget -->
                     <div class="sidebar-widget search-widget" data-aos="fade-up" data-aos-delay="200">
@@ -276,18 +288,7 @@ layout('navbar');
                         </div>
                     </div><!-- End Upcoming Events Widget -->
 
-                    <!-- Newsletter Widget -->
-                    <div class="sidebar-widget newsletter-widget" data-aos="fade-up" data-aos-delay="500">
-                        <h4 class="widget-title">Stay Updated</h4>
-                        <p>Subscribe to our newsletter and never miss important events and course announcements.</p>
-                        <form action="forms/newsletter.php" method="post" class="php-email-form newsletter-form">
-                            <input type="email" name="email" placeholder="Your email address" required="">
-                            <button type="submit">Subscribe</button>
-                            <div class="loading">Loading</div>
-                            <div class="error-message"></div>
-                            <div class="sent-message">Your subscription request has been sent. Thank you!</div>
-                        </form>
-                    </div><!-- End Newsletter Widget -->
+
 
                 </div>
 

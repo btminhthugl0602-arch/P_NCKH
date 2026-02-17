@@ -40,24 +40,27 @@ layout('navbar');
                 <div class="col-12">
                   <div class="form-group">
                     <label for="username" class="form-label">Tên đăng nhập hoặc email</label>
-                    <input type="text" id="username" name="username" class="form-control" required="" autocomplete="given-name">
+                    <input type="text" id="username" name="username" class="form-control"
+                      required="" autocomplete="given-name">
                   </div>
                 </div>
                 <div class="col-12">
                   <div class="form-group">
                     <label for="password" class="form-label">Mật khẩu</label>
-                    <input type="password" id="password" name="password" class="form-control" required="" autocomplete="current-password">
+                    <input type="password" id="password" name="password" class="form-control"
+                      required="" autocomplete="current-password">
                   </div>
                   <div class="row">
                     <div class="col-12 text-center">
                       <button type="submit" class="btn btn-enroll">
                         Đăng nhập
                       </button>
-                      <a class="enrollment-note mt-3">
-                        Đăng nhập với tư cách khách
-                      </a>
+
                     </div>
-                  </div>
+                    <div class="col-12 text-center mt-3">
+                      <a href="<?php echo _HOST_URL; ?>/?module=auth&action=guest">Đăng nhập
+                        với tư cách khách.</a>
+                    </div>
 
             </form>
 
