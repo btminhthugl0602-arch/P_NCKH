@@ -40,4 +40,5 @@ if (!defined('_AUTHEN')) {
             <a class="btn-getstarted" href="<?php echo _HOST_URL; ?>/?module=auth&action=login">Đăng nhập</a>
 
         </div>
+
     </header>

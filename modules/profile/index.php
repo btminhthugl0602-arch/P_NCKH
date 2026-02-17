@@ -3,7 +3,7 @@ if (!defined('_AUTHEN')) {
     die('Truy cập không hợp lệ');
 }
 layout('header');
-layput('navbar');
+layout('navbar');
 ?>
 <main class="main">
 
@@ -35,7 +35,7 @@ layput('navbar');
                         </div>
                         <div class="hero-content">
                             <div class="instructor-avatar">
-                                <img src="assets/img/education/teacher-7.webp" alt="Instructor" class="img-fluid">
+                                <img src="<?php echo _HOST_URL_TEMPLATES ?>/assets/img/user.jpg"" alt="Instructor" class="img-fluid">
                                 <div class="status-badge">
                                     <i class="bi bi-patch-check-fill"></i>
                                     <span>Verified</span>

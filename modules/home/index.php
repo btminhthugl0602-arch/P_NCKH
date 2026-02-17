@@ -43,8 +43,7 @@ và theo dõi tiến độ các cuộc thi, sự kiện nghiên cứu khoa học
             <div class="col-lg-6" data-aos="fade-up" data-aos-delay="200">
               <div class="hero-image">
                 <div class="main-image">
-                  <!-- <img src="<?php echo _HOST_URL_TEMPLATES ?>/assets/img/images.png" alt="Online Learning" class="img-fluid"> -->
-                   <img src="http://localhost/P_NCKH/template/assets/img/images.png">
+                  <img src="<?php echo _HOST_URL_TEMPLATES ?>/assets/img/images.png" alt="Online Learning" class="img-fluid">
                 </div>
 
                 <div class="floating-cards">
