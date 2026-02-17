@@ -3,9 +3,9 @@ date_default_timezone_set('Asia/Ho_Chi_Minh');
 session_start();
 ob_start();
 require_once('config.php');
-require_once('./modules/db_connect.php');
-require_once('./modules/base.php');
-require_once('./modules/session.php');
+require_once('./modules/functions/db_connect.php');
+require_once('./modules/functions/base.php');
+require_once('./modules/functions/session.php');
 
 
 
