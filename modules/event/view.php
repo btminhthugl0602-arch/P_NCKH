@@ -524,12 +524,13 @@ layout('navbar');
                                     <p>Chọn khu vực cấu hình phù hợp để thiết lập quy chế, vòng thi và bộ tiêu chí.</p>
 
                                     <div class="d-flex flex-column gap-2">
+                                        <a class="btn btn-primary" href="<?php echo _HOST_URL ?>/?module=event&action=config_rounds&id=<?php echo (int)$id_su_kien; ?>">
+                                            Cấu hình cơ bản
+                                        </a>
                                         <a class="btn btn-primary" href="<?php echo _HOST_URL ?>/?module=event&action=config_rules&id=<?php echo (int)$id_su_kien; ?>">
                                             Quy chế & Điều kiện
                                         </a>
-                                        <a class="btn btn-primary" href="<?php echo _HOST_URL ?>/?module=event&action=config_rounds&id=<?php echo (int)$id_su_kien; ?>">
-                                            Vòng thi
-                                        </a>
+                                        
                                         <a class="btn btn-primary" href="<?php echo _HOST_URL ?>/?module=event&action=config_criteria&id=<?php echo (int)$id_su_kien; ?>">
                                             Bộ tiêu chí & Chấm điểm
                                         </a>

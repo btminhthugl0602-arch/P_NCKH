@@ -15,16 +15,70 @@ $event_error = '';
 // Xử lý tạo sự kiện mới (chỉ BTC / admin mới được tạo)
 if (isPost() && isset($_POST['create_event'])) {
     $filterData = filter();
-    $tenSK = $filterData['tenSK'] ?? '';
-    $moTa = $filterData['moTa'] ?? '';
 
-    // Gọi hàm service chuẩn
-    $result = btc_tao_su_kien($conn, $user_id, $tenSK, $moTa);
+    $tenSK = trim($filterData['tenSK'] ?? '');
+    $moTa = trim($filterData['moTa'] ?? '');
+    $idCap = (int)($filterData['idCap'] ?? 0);
+    $isActive = isset($filterData['isActive']) ? (int)$filterData['isActive'] : 1;
 
-    if ($result['status']) {
-        $event_created = true;
+    $ngayMoDangKy = !empty($filterData['ngayMoDangKy']) ? date('Y-m-d H:i:s', strtotime($filterData['ngayMoDangKy'])) : '';
+    $ngayDongDangKy = !empty($filterData['ngayDongDangKy']) ? date('Y-m-d H:i:s', strtotime($filterData['ngayDongDangKy'])) : '';
+    $ngayBatDau = !empty($filterData['ngayBatDau']) ? date('Y-m-d H:i:s', strtotime($filterData['ngayBatDau'])) : '';
+    $ngayKetThuc = !empty($filterData['ngayKetThuc']) ? date('Y-m-d H:i:s', strtotime($filterData['ngayKetThuc'])) : '';
+
+    $errors = [];
+
+    if ($tenSK === '') {
+        $errors[] = 'Tên sự kiện không được để trống.';
+    }
+    if ($idCap <= 0) {
+        $errors[] = 'Vui lòng chọn cấp tổ chức.';
+    }
+    if (empty($ngayMoDangKy) || empty($ngayDongDangKy) || empty($ngayBatDau) || empty($ngayKetThuc)) {
+        $errors[] = 'Vui lòng nhập đầy đủ thời gian.';
     } else {
-        $event_error = $result['message'] ?? 'Không tạo được sự kiện';
+        $now = strtotime(date('Y-m-d'));
+        $mo = strtotime($ngayMoDangKy);
+        $dong = strtotime($ngayDongDangKy);
+        $bat = strtotime($ngayBatDau);
+        $ket = strtotime($ngayKetThuc);
+
+        if ($mo < $now) {
+            $errors[] = 'Ngày mở đăng ký phải từ hôm nay trở đi.';
+        }
+        if ($mo >= $dong) {
+            $errors[] = 'Ngày mở đăng ký phải nhỏ hơn ngày đóng đăng ký.';
+        }
+        if ($bat < $mo) {
+            $errors[] = 'Ngày bắt đầu phải lớn hơn hoặc bằng ngày mở đăng ký.';
+        }
+        if ($ket < $bat) {
+            $errors[] = 'Ngày kết thúc phải lớn hơn hoặc bằng ngày bắt đầu.';
+        }
+    }
+
+    if (!empty($errors)) {
+        $event_error = implode('<br>', $errors);
+    } else {
+        // Gọi hàm service chuẩn
+        $result = btc_tao_su_kien(
+            $conn,
+            $user_id,
+            $tenSK,
+            $moTa,
+            $idCap,
+            $ngayMoDangKy,
+            $ngayDongDangKy,
+            $ngayBatDau,
+            $ngayKetThuc,
+            $isActive
+        );
+
+        if ($result['status']) {
+            $event_created = true;
+        } else {
+            $event_error = $result['message'] ?? 'Không tạo được sự kiện';
+        }
     }
 }
 
@@ -180,15 +234,42 @@ layout('navbar');
                     <!-- Newsletter Widget -->
                     <div class="sidebar-widget newsletter-widget" data-aos="fade-up" data-aos-delay="500">
                         <h4 class="widget-title">Tạo sự kiện mới</h4>
-                        <p>Nhập tên sự kiện và bắt đầu tạo sự kiện.</p>
+                        <p>Nhập thông tin sự kiện để tạo mới.</p>
                         <form action="<?php echo _HOST_URL ?>/?module=event&action=index" method="post" class="newsletter-form">
-    <input type="text" name="tenSK" placeholder="Tên sự kiện..." required="">
-    <textarea name="moTa" placeholder="Mô tả ngắn..." rows="3"></textarea>
-    <button type="submit" name="create_event" value="1">Tạo sự kiện</button>
-    <div class="loading">Đang tạo...</div>
-    <div class="error-message"><?php echo !empty($event_error) ? $event_error : ''; ?></div>
-    <div class="sent-message"><?php echo $event_created ? 'Sự kiện đã được tạo thành công!' : ''; ?></div>
-</form>
+                            <input type="text" name="tenSK" placeholder="Tên sự kiện..." required="">
+                            <textarea name="moTa" placeholder="Mô tả ngắn..." rows="3"></textarea>
+
+                            <select name="idCap" required="">
+                                <option value="">-- Chọn cấp tổ chức --</option>
+                                <?php foreach ($caps as $cap): ?>
+                                    <option value="<?php echo (int)$cap['idCap']; ?>">
+                                        <?php echo htmlspecialchars($cap['tenCap']); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+
+                            <label>Ngày mở đăng ký</label>
+                            <input type="datetime-local" name="ngayMoDangKy" required="">
+
+                            <label>Ngày đóng đăng ký</label>
+                            <input type="datetime-local" name="ngayDongDangKy" required="">
+
+                            <label>Ngày bắt đầu</label>
+                            <input type="datetime-local" name="ngayBatDau" required="">
+
+                            <label>Ngày kết thúc</label>
+                            <input type="datetime-local" name="ngayKetThuc" required="">
+
+                            <select name="isActive">
+                                <option value="1">Kích hoạt</option>
+                                <option value="0">Ẩn</option>
+                            </select>
+
+                            <button type="submit" name="create_event" value="1">Tạo sự kiện</button>
+                            <div class="loading">Đang tạo...</div>
+                            <div class="error-message"><?php echo !empty($event_error) ? $event_error : ''; ?></div>
+                            <div class="sent-message"><?php echo $event_created ? 'Sự kiện đã được tạo thành công!' : ''; ?></div>
+                        </form>
                     </div><!-- End Newsletter Widget -->
 
                     <!-- Search Widget -->
