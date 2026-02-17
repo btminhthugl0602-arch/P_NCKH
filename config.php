@@ -1,7 +1,7 @@
 <?php
 const _AUTHEN = true;
 
-const _MODULES = 'dashboard';
+const _MODULES = 'home';
 const _ACTION = 'index';
 
 //Khai báo database
@@ -14,9 +14,14 @@ const _DRIVER = 'mysql';
 //debug
 const _DEBUG = true;
 
-//  Thiết lập host
-define('_HOST_URL', 'http://' . $_SERVER['HTTP_HOST'] . '/NCKH2');
-define('_HOST_URL_TEMPLATES', 'http://' . $_SERVER['HTTP_HOST'] . '/NCKH2/template');
+//  Thiết lập host - CÁCH MỚI: Tự động detect base path
+// Lấy đường dẫn thực tế của script
+$script_name = dirname($_SERVER['SCRIPT_NAME']);
+// Loại bỏ dấu / ở cuối nếu có
+$script_name = rtrim($script_name, '/');
+
+define('_HOST_URL', 'http://' . $_SERVER['HTTP_HOST'] . $script_name);
+define('_HOST_URL_TEMPLATES', _HOST_URL . '/template');
 
 //  Thiết lập path
 define('_PATH_URL', __DIR__);
