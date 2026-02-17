@@ -2,6 +2,17 @@
 if (!defined('_AUTHEN')) {
     die('Truy cập không hợp lệ');
 }
+
+require_once _PATH_URL . '/modules/functions/quan_ly_su_kien.php';
+
+$id_su_kien = isset($_GET['id']) ? (int)$_GET['id'] : 0;
+$event = btc_lay_chi_tiet_su_kien($conn, $id_su_kien);
+
+if (!$event) {
+    require_once _PATH_URL . '/modules/errors/404.php';
+    exit;
+}
+
 layout('header');
 layout('navbar');
 ?>
@@ -10,11 +21,11 @@ layout('navbar');
     <!-- Page Title -->
     <div class="page-title light-background">
         <div class="container d-lg-flex justify-content-between align-items-center">
-            <h1 class="mb-2 mb-lg-0">Tên sự kiện</h1>
+            <h1 class="mb-2 mb-lg-0"><?= htmlspecialchars($event['tenSK']) ?></h1>
             <nav class="breadcrumbs">
                 <ol>
                     <li><a href="<?php echo _HOST_URL ?>">Home</a></li>
-                    <li class="current">Tên sự kiện</li>
+                    <li class="current"><?= htmlspecialchars($event['tenSK']) ?></li>
                 </ol>
             </nav>
         </div>
@@ -32,20 +43,18 @@ layout('navbar');
                     <div class="course-hero" data-aos="fade-up" data-aos-delay="200">
                         <div class="hero-content">
                             <div class="course-badge">
-                                <span class="category">Chủ đề</span>
-                                <span class="level">Advanced</span>
+                                <span class="category">Sự kiện</span>
+                                <span class="level">Cấp: <?= htmlspecialchars($event['tenCap'] ?? 'Chưa rõ') ?></span>
                             </div>
-                            <h1>Tên sự kiện</h1>
-                            <p class="course-subtitle">Mô tả: Master modern web development with React, Node.js, and
-                                MongoDB in
-                                this comprehensive hands-on course</p>
+                            <h1><?= htmlspecialchars($event['tenSK']) ?></h1>
+                            <p class="course-subtitle">Mô tả: <?= htmlspecialchars($event['moTa']) ?></p>
 
                             <div class="instructor-card">
                                 <img src="<?php echo _HOST_URL_TEMPLATES ?>/assets/img/person/person-m-8.webp"
                                     alt="Instructor" class="instructor-image">
                                 <div class="instructor-details">
                                     <h5>Hội đồng tổ chức</h5>
-                                    <span>Khoa CNTT - Trường Đại học Sư phạm Hà Nội</span>
+                                    <span><?= htmlspecialchars($event['nguoiTaoTen'] ?? 'BTC') ?></span>
                                     <div class="instructor-rating">
                                         <i class="bi bi-star-fill"></i>
                                         <i class="bi bi-star-fill"></i>
@@ -69,44 +78,40 @@ layout('navbar');
                         </div>
                     </div><!-- End Course Hero -->
 
-                    <!-- Course Navigation Tabs -->
+                    <!-- Điều hướng sự kiện -->
                     <div class="course-nav-tabs" data-aos="fade-up" data-aos-delay="300">
-                        <ul class="nav nav-tabs" id="course-detailsCourseTab" role="tablist">
+                        <ul class="nav nav-tabs" id="EventDetails" role="tablist">
                             <li class="nav-item">
-                                <button class="nav-link active" id="course-detailsoverview-tab" data-bs-toggle="tab"
-                                    data-bs-target="#course-detailsoverview" type="button" role="tab">
+                                <button class="nav-link active" id="event-info-tab" data-bs-toggle="tab"
+                                    data-bs-target="#event-info" type="button" role="tab">
                                     <i class="bi bi-layout-text-window-reverse"></i>
                                     Thông tin
                                 </button>
                             </li>
                             <li class="nav-item">
-                                <button class="nav-link" id="course-detailscurriculum-tab" data-bs-toggle="tab"
-                                    data-bs-target="#course-detailscurriculum" type="button" role="tab">
+                                <button class="nav-link" id="event-groups-tab" data-bs-toggle="tab"
+                                    data-bs-target="#event-groups" type="button" role="tab">
                                     <i class="bi bi-list-ul"></i>
-                                    Vòng thi
+                                    Nhóm thi
                                 </button>
                             </li>
                             <li class="nav-item">
-                                <button class="nav-link" id="course-detailsreviews-tab" data-bs-toggle="tab"
-                                    data-bs-target="#course-detailsreviews" type="button" role="tab">
+                                <button class="nav-link" id="event-config-tab" data-bs-toggle="tab"
+                                    data-bs-target="#event-config" type="button" role="tab">
                                     <i class="bi bi-star"></i>
-                                    Reviews
+                                    Cấu hình sự kiện
                                 </button>
                             </li>
                         </ul>
 
-                        <div class="tab-content" id="course-detailsCourseTabContent">
+                        <div class="tab-content" id="EventDetailsContent">
 
-                            <!-- Overview Tab -->
-                            <div class="tab-pane fade show active" id="course-detailsoverview" role="tabpanel">
+                            <!-- Thông tin Tab -->
+                            <div class="tab-pane fade show active" id="event-info" role="tabpanel">
 
                                 <div class="overview-section">
                                     <h3>Chi tiết sự kiện</h3>
-                                    <p>Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium
-                                        doloremque laudantium, totam rem aperiam, eaque ipsa quae ab illo inventore
-                                        veritatis et quasi architecto beatae vitae dicta sunt explicabo.</p>
-                                    <p>Nemo enim ipsam voluptatem quia voluptas sit aspernatur aut odit aut fugit, sed
-                                        quia consequuntur magni dolores eos qui ratione voluptatem sequi nesciunt.</p>
+                                    <p><?= nl2br(htmlspecialchars($event['moTa'])) ?></p>
                                 </div>
 
                                 <div class="skills-grid">
@@ -169,311 +174,494 @@ layout('navbar');
                                     </ul>
                                 </div>
 
-                            </div><!-- End Overview Tab -->
+                            </div><!-- End Thông tin Tab -->
 
-                            <!-- Curriculum Tab -->
-                            <div class="tab-pane fade" id="course-detailscurriculum" role="tabpanel">
+                            <!-- Nhóm Tab -->
+                            <div class="tab-pane fade" id="event-groups" role="tabpanel">
 
-                                <div class="curriculum-overview">
-                                    <div class="curriculum-stats">
-                                        <div class="stat">
-                                            <i class="bi bi-collection-play"></i>
-                                            <span>12 Sections</span>
-                                        </div>
-                                        <div class="stat">
-                                            <i class="bi bi-play-circle"></i>
-                                            <span>89 Lectures</span>
-                                        </div>
-                                        <div class="stat">
-                                            <i class="bi bi-clock"></i>
-                                            <span>45h 32m</span>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div class="accordion" id="curriculumAccordion">
-
-                                    <div class="accordion-item curriculum-module">
-                                        <h2 class="accordion-header">
-                                            <button class="accordion-button" type="button" data-bs-toggle="collapse"
-                                                data-bs-target="#module1">
-                                                <div class="module-info">
-                                                    <span class="module-title">JavaScript Fundamentals &amp; ES6+</span>
-                                                    <span class="module-meta">8 lessons • 4h 15m</span>
-                                                </div>
+                                <div class="course-nav-tabs" data-aos="fade-up" data-aos-delay="300">
+                                    <ul class="nav nav-tabs" id="course-detailsCourseTab" role="tablist">
+                                        <li class="nav-item">
+                                            <button class="nav-link active" id="all-groups-tab" data-bs-toggle="tab"
+                                                data-bs-target="#all-groups" type="button" role="tab">
+                                                <i class="bi bi-layout-text-window-reverse"></i>
+                                                Tất cả
                                             </button>
-                                        </h2>
-                                        <div id="module1" class="accordion-collapse collapse show"
-                                            data-bs-parent="#curriculumAccordion">
-                                            <div class="accordion-body">
-                                                <div class="lessons-list">
-                                                    <div class="lesson">
-                                                        <i class="bi bi-play-circle"></i>
-                                                        <span class="lesson-title">Variables, Functions and Scope</span>
-                                                        <span class="lesson-time">28 min</span>
-                                                    </div>
-                                                    <div class="lesson">
-                                                        <i class="bi bi-play-circle"></i>
-                                                        <span class="lesson-title">Arrow Functions and
-                                                            Destructuring</span>
-                                                        <span class="lesson-time">35 min</span>
-                                                    </div>
-                                                    <div class="lesson">
-                                                        <i class="bi bi-file-earmark-text"></i>
-                                                        <span class="lesson-title">Promises and Async/Await</span>
-                                                        <span class="lesson-time">42 min</span>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div class="accordion-item curriculum-module">
-                                        <h2 class="accordion-header">
-                                            <button class="accordion-button collapsed" type="button"
-                                                data-bs-toggle="collapse" data-bs-target="#module2">
-                                                <div class="module-info">
-                                                    <span class="module-title">React Development Deep Dive</span>
-                                                    <span class="module-meta">12 lessons • 7h 45m</span>
-                                                </div>
+                                        </li>
+                                        <li class="nav-item">
+                                            <button class="nav-link" id="my-groups-tab" data-bs-toggle="tab"
+                                                data-bs-target="#my-groups" type="button" role="tab">
+                                                <i class="bi bi-list-ul"></i>
+                                                Nhóm của tôi
                                             </button>
-                                        </h2>
-                                        <div id="module2" class="accordion-collapse collapse"
-                                            data-bs-parent="#curriculumAccordion">
-                                            <div class="accordion-body">
-                                                <div class="lessons-list">
-                                                    <div class="lesson">
-                                                        <i class="bi bi-play-circle"></i>
-                                                        <span class="lesson-title">Components and JSX Syntax</span>
-                                                        <span class="lesson-time">32 min</span>
+                                        </li>
+                                    </ul>
+
+                                    <div class="tab-content" id="course-detailsCourseTabContent">
+
+                                        <!-- Tất cả nhóm Tab -->
+                                        <div class="tab-pane fade show active" id="all-groups" role="tabpanel">
+
+                                            <!-- Courses 2 Section -->
+                                            <section id="courses-2" class="courses-2 section">
+
+                                                <div class="container" data-aos="fade-up" data-aos-delay="100">
+
+                                                    <div class="row">
+                                                        <div class="col-lg-12">
+                                                            <div class="courses-header" data-aos="fade-left"
+                                                                data-aos-delay="100">
+                                                                <div class="search-box">
+                                                                    <i class="bi bi-search"></i>
+                                                                    <input type="text" placeholder="Tìm kiếm nhóm...">
+                                                                </div>
+                                                                <div class="sort-dropdown">
+                                                                    <select>
+                                                                        <option>Sắp xếp theo: Tất cả</option>
+                                                                        <option>Nhóm của tôi</option>
+                                                                        <option>Thành viên: Ít tới nhiều</option>
+                                                                        <option>Thành viên: Nhiều tới ít</option>
+                                                                    </select>
+                                                                </div>
+                                                            </div>
+
+                                                            <div class="courses-grid" data-aos="fade-up"
+                                                                data-aos-delay="200">
+                                                                <div class="row">
+                                                                    <div class="col-lg-6 col-md-6">
+                                                                        <div class="course-card">
+                                                                            <div class="course-image">
+                                                                                <img src="<?php echo _HOST_URL_TEMPLATES ?>/assets/img/education/courses-3.webp"
+                                                                                    alt="Course" class="img-fluid">
+                                                                                <div class="course-badge">Đã đủ thành
+                                                                                    viên
+                                                                                </div>
+                                                                                <div class="course-price">5/5</div>
+                                                                            </div>
+                                                                            <div class="course-content">
+                                                                                <div class="course-meta">
+                                                                                    <span
+                                                                                        class="category">Programming</span>
+                                                                                    <span
+                                                                                        class="level">Intermediate</span>
+                                                                                </div>
+                                                                                <h3>Tên nhóm</h3>
+                                                                                <p>Mô tả nhóm</p>
+                                                                                <div class="course-stats">
+                                                                                    <div class="stat">
+                                                                                        <i class="bi bi-clock"></i>
+                                                                                        <span>15 hours</span>
+                                                                                    </div>
+                                                                                    <div class="stat">
+                                                                                        <i class="bi bi-people"></i>
+                                                                                        <span>1,245 students</span>
+                                                                                    </div>
+                                                                                    <div class="rating">
+                                                                                        <i class="bi bi-star-fill"></i>
+                                                                                        <i class="bi bi-star-fill"></i>
+                                                                                        <i class="bi bi-star-fill"></i>
+                                                                                        <i class="bi bi-star-fill"></i>
+                                                                                        <i class="bi bi-star-fill"></i>
+                                                                                        <span>5 (89 reviews)</span>
+                                                                                    </div>
+                                                                                </div>
+                                                                                <div class="instructor-info">
+                                                                                    <img src="<?php echo _HOST_URL_TEMPLATES ?>/assets/img/person/person-m-3.webp"
+                                                                                        alt="Instructor"
+                                                                                        class="instructor-avatar">
+                                                                                    <span class="instructor-name">Giảng
+                                                                                        viên hướng dẫn / Nhóm
+                                                                                        trưởng</span>
+                                                                                </div>
+                                                                                <a href="enroll.html"
+                                                                                    class="btn-course">Xin vào / Đã
+                                                                                    đủ</a>
+                                                                            </div>
+                                                                        </div><!-- End Course Card -->
+                                                                    </div>
+
+                                                                    <div class="col-lg-6 col-md-6">
+                                                                        <div class="course-card">
+                                                                            <div class="course-image">
+                                                                                <img src="<?php echo _HOST_URL_TEMPLATES ?>/assets/img/education/courses-7.webp"
+                                                                                    alt="Course" class="img-fluid">
+                                                                                <div class="course-badge badge-free">
+                                                                                    Free</div>
+                                                                            </div>
+                                                                            <div class="course-content">
+                                                                                <div class="course-meta">
+                                                                                    <span class="category">Design</span>
+                                                                                    <span class="level">Beginner</span>
+                                                                                </div>
+                                                                                <h3>UI/UX Design Fundamentals</h3>
+                                                                                <p>Mauris blandit aliquet elit, eget
+                                                                                    tincidunt nibh pulvinar a.
+                                                                                    Vestibulum ac diam sit amet quam
+                                                                                    vehicula elementum sed sit amet.</p>
+                                                                                <div class="course-stats">
+                                                                                    <div class="stat">
+                                                                                        <i class="bi bi-clock"></i>
+                                                                                        <span>8 hours</span>
+                                                                                    </div>
+                                                                                    <div class="stat">
+                                                                                        <i class="bi bi-people"></i>
+                                                                                        <span>2,891 students</span>
+                                                                                    </div>
+                                                                                    <div class="rating">
+                                                                                        <i class="bi bi-star-fill"></i>
+                                                                                        <i class="bi bi-star-fill"></i>
+                                                                                        <i class="bi bi-star-fill"></i>
+                                                                                        <i class="bi bi-star-fill"></i>
+                                                                                        <i class="bi bi-star"></i>
+                                                                                        <span>4.6 (156 reviews)</span>
+                                                                                    </div>
+                                                                                </div>
+                                                                                <div class="instructor-info">
+                                                                                    <img src="<?php echo _HOST_URL_TEMPLATES ?>/assets/img/person/person-f-7.webp"
+                                                                                        alt="Instructor"
+                                                                                        class="instructor-avatar">
+                                                                                    <span class="instructor-name">Sarah
+                                                                                        Johnson</span>
+                                                                                </div>
+                                                                                <a href="enroll.html"
+                                                                                    class="btn-course">Start Free
+                                                                                    Course</a>
+                                                                            </div>
+                                                                        </div><!-- End Course Card -->
+                                                                    </div>
+
+                                                                </div>
+                                                            </div><!-- End Courses Grid -->
+
+                                                            <div class="pagination-wrapper" data-aos="fade-up"
+                                                                data-aos-delay="300">
+                                                                <nav aria-label="Courses pagination">
+                                                                    <ul class="pagination justify-content-center">
+                                                                        <li class="page-item disabled">
+                                                                            <a class="page-link" href="#" tabindex="-1"
+                                                                                aria-disabled="true">
+                                                                                <i class="bi bi-chevron-left"></i>
+                                                                            </a>
+                                                                        </li>
+                                                                        <li class="page-item active">
+                                                                            <a class="page-link" href="#">1</a>
+                                                                        </li>
+                                                                        <li class="page-item">
+                                                                            <a class="page-link" href="#">2</a>
+                                                                        </li>
+                                                                        <li class="page-item">
+                                                                            <a class="page-link" href="#">3</a>
+                                                                        </li>
+                                                                        <li class="page-item">
+                                                                            <a class="page-link" href="#">
+                                                                                <i class="bi bi-chevron-right"></i>
+                                                                            </a>
+                                                                        </li>
+                                                                    </ul>
+                                                                </nav>
+                                                            </div><!-- End Pagination -->
+
+                                                        </div>
                                                     </div>
-                                                    <div class="lesson">
-                                                        <i class="bi bi-play-circle"></i>
-                                                        <span class="lesson-title">State Management with Hooks</span>
-                                                        <span class="lesson-time">48 min</span>
+
+                                                </div>
+
+                                            </section><!-- /Courses 2 Section -->
+
+                                        </div><!-- End Tất cả nhóm Tab -->
+
+                                        <!-- Nhóm của tôi Tab -->
+                                        <div class="tab-pane fade" id="my-groups" role="tabpanel">
+
+                                            <section id="courses-2" class="courses-2 section">
+
+                                                <div class="container" data-aos="fade-up" data-aos-delay="100">
+
+                                                    <div class="row">
+                                                        <div class="col-lg-12">
+                                                            <div class="courses-header" data-aos="fade-left"
+                                                                data-aos-delay="100">
+                                                                <div class="search-box">
+                                                                    <i class="bi bi-search"></i>
+                                                                    <input type="text" placeholder="Tìm kiếm nhóm...">
+                                                                </div>
+                                                                <div class="sort-dropdown">
+                                                                    <select>
+                                                                        <option>Sắp xếp theo: Tất cả</option>
+                                                                        <option>Nhóm của tôi</option>
+                                                                        <option>Thành viên: Ít tới nhiều</option>
+                                                                        <option>Thành viên: Nhiều tới ít</option>
+                                                                    </select>
+                                                                </div>
+                                                            </div>
+
+                                                            <div class="courses-grid" data-aos="fade-up"
+                                                                data-aos-delay="200">
+                                                                <div class="row">
+                                                                    <div class="col-lg-6 col-md-6">
+                                                                        <div class="course-card">
+                                                                            <div class="course-image">
+                                                                                <img src="<?php echo _HOST_URL_TEMPLATES ?>/assets/img/education/courses-3.webp"
+                                                                                    alt="Course" class="img-fluid">
+                                                                                <div class="course-badge">Đã đủ thành
+                                                                                    viên
+                                                                                </div>
+                                                                                <div class="course-price">5/5</div>
+                                                                            </div>
+                                                                            <div class="course-content">
+                                                                                <div class="course-meta">
+                                                                                    <span
+                                                                                        class="category">Programming</span>
+                                                                                    <span
+                                                                                        class="level">Intermediate</span>
+                                                                                </div>
+                                                                                <h3>Tên nhóm</h3>
+                                                                                <p>Mô tả nhóm</p>
+                                                                                <div class="course-stats">
+                                                                                    <div class="stat">
+                                                                                        <i class="bi bi-clock"></i>
+                                                                                        <span>15 hours</span>
+                                                                                    </div>
+                                                                                    <div class="stat">
+                                                                                        <i class="bi bi-people"></i>
+                                                                                        <span>1,245 students</span>
+                                                                                    </div>
+                                                                                    <div class="rating">
+                                                                                        <i class="bi bi-star-fill"></i>
+                                                                                        <i class="bi bi-star-fill"></i>
+                                                                                        <i class="bi bi-star-fill"></i>
+                                                                                        <i class="bi bi-star-fill"></i>
+                                                                                        <i class="bi bi-star-fill"></i>
+                                                                                        <span>5 (89 reviews)</span>
+                                                                                    </div>
+                                                                                </div>
+                                                                                <div class="instructor-info">
+                                                                                    <img src="<?php echo _HOST_URL_TEMPLATES ?>/assets/img/person/person-m-3.webp"
+                                                                                        alt="Instructor"
+                                                                                        class="instructor-avatar">
+                                                                                    <span class="instructor-name">Giảng
+                                                                                        viên hướng dẫn / Nhóm
+                                                                                        trưởng</span>
+                                                                                </div>
+                                                                                <a href="enroll.html"
+                                                                                    class="btn-course">Xin vào / Đã
+                                                                                    đủ</a>
+                                                                            </div>
+                                                                        </div><!-- End Course Card -->
+                                                                    </div>
+
+                                                                    <div class="col-lg-6 col-md-6">
+                                                                        <div class="course-card">
+                                                                            <div class="course-image">
+                                                                                <img src="<?php echo _HOST_URL_TEMPLATES ?>/assets/img/education/courses-7.webp"
+                                                                                    alt="Course" class="img-fluid">
+                                                                                <div class="course-badge badge-free">
+                                                                                    Free</div>
+                                                                            </div>
+                                                                            <div class="course-content">
+                                                                                <div class="course-meta">
+                                                                                    <span class="category">Design</span>
+                                                                                    <span class="level">Beginner</span>
+                                                                                </div>
+                                                                                <h3>UI/UX Design Fundamentals</h3>
+                                                                                <p>Mauris blandit aliquet elit, eget
+                                                                                    tincidunt nibh pulvinar a.
+                                                                                    Vestibulum ac diam sit amet quam
+                                                                                    vehicula elementum sed sit amet.</p>
+                                                                                <div class="course-stats">
+                                                                                    <div class="stat">
+                                                                                        <i class="bi bi-clock"></i>
+                                                                                        <span>8 hours</span>
+                                                                                    </div>
+                                                                                    <div class="stat">
+                                                                                        <i class="bi bi-people"></i>
+                                                                                        <span>2,891 students</span>
+                                                                                    </div>
+                                                                                    <div class="rating">
+                                                                                        <i class="bi bi-star-fill"></i>
+                                                                                        <i class="bi bi-star-fill"></i>
+                                                                                        <i class="bi bi-star-fill"></i>
+                                                                                        <i class="bi bi-star-fill"></i>
+                                                                                        <i class="bi bi-star"></i>
+                                                                                        <span>4.6 (156 reviews)</span>
+                                                                                    </div>
+                                                                                </div>
+                                                                                <div class="instructor-info">
+                                                                                    <img src="<?php echo _HOST_URL_TEMPLATES ?>/assets/img/person/person-f-7.webp"
+                                                                                        alt="Instructor"
+                                                                                        class="instructor-avatar">
+                                                                                    <span class="instructor-name">Sarah
+                                                                                        Johnson</span>
+                                                                                </div>
+                                                                                <a href="enroll.html"
+                                                                                    class="btn-course">Start Free
+                                                                                    Course</a>
+                                                                            </div>
+                                                                        </div><!-- End Course Card -->
+                                                                    </div>
+
+                                                                </div>
+                                                            </div><!-- End Courses Grid -->
+
+                                                        </div>
                                                     </div>
+
                                                 </div>
-                                            </div>
-                                        </div>
+
+                                            </section><!-- /Courses 2 Section -->
+
+                                        </div><!-- End Nhóm của tôi Tab -->
+
+                                    </div><!-- End course-detailsCourseTabContent -->
+                                </div><!-- End course-nav-tabs inner -->
+
+                            </div><!-- End event-groups tab-pane -->
+
+                            <!-- Cấu hình Tab -->
+                            <div class="tab-pane fade" id="event-config" role="tabpanel">
+                                <div class="event-config-content" data-aos="fade-up" data-aos-delay="100">
+                                    <h3>Cấu hình sự kiện</h3>
+                                    <p>Chọn khu vực cấu hình phù hợp để thiết lập quy chế, vòng thi và bộ tiêu chí.</p>
+
+                                    <div class="d-flex flex-column gap-2">
+                                        <a class="btn btn-primary" href="<?php echo _HOST_URL ?>/?module=event&action=config_rounds&id=<?php echo (int)$id_su_kien; ?>">
+                                            Cấu hình cơ bản
+                                        </a>
+                                        <a class="btn btn-primary" href="<?php echo _HOST_URL ?>/?module=event&action=config_rules&id=<?php echo (int)$id_su_kien; ?>">
+                                            Quy chế & Điều kiện
+                                        </a>
+                                        
+                                        <a class="btn btn-primary" href="<?php echo _HOST_URL ?>/?module=event&action=config_criteria&id=<?php echo (int)$id_su_kien; ?>">
+                                            Bộ tiêu chí & Chấm điểm
+                                        </a>
+                                        <a class="btn btn-primary" href="<?php echo _HOST_URL ?>/?module=event&action=config_assign&id=<?php echo (int)$id_su_kien; ?>">
+                                            Phân công chấm
+                                        </a>
+                                        <a class="btn btn-primary" href="<?php echo _HOST_URL ?>/?module=event&action=config_schedule&id=<?php echo (int)$id_su_kien; ?>">
+                                            Lập lịch tổ chức
+                                        </a>
                                     </div>
+                                </div><!-- End Cấu hình Tab -->
 
-                                    <div class="accordion-item curriculum-module">
-                                        <h2 class="accordion-header">
-                                            <button class="accordion-button collapsed" type="button"
-                                                data-bs-toggle="collapse" data-bs-target="#module3">
-                                                <div class="module-info">
-                                                    <span class="module-title">Node.js &amp; Server Development</span>
-                                                    <span class="module-meta">15 lessons • 8h 20m</span>
-                                                </div>
-                                            </button>
-                                        </h2>
-                                        <div id="module3" class="accordion-collapse collapse"
-                                            data-bs-parent="#curriculumAccordion">
-                                            <div class="accordion-body">
-                                                <div class="lessons-list">
-                                                    <div class="lesson">
-                                                        <i class="bi bi-play-circle"></i>
-                                                        <span class="lesson-title">Express.js Server Setup</span>
-                                                        <span class="lesson-time">25 min</span>
-                                                    </div>
-                                                    <div class="lesson">
-                                                        <i class="bi bi-file-earmark-text"></i>
-                                                        <span class="lesson-title">Building RESTful APIs</span>
-                                                        <span class="lesson-time">55 min</span>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
+                            </div><!-- End EventDetailsContent -->
+                        </div><!-- End course-nav-tabs -->
 
+                    </div><!-- End col-lg-8 -->
+
+                    <div class="col-lg-4">
+
+                        <!-- Enrollment Card -->
+                        <div class="enrollment-card d-none" data-aos="fade-up" data-aos-delay="200">
+
+                            <div class="card-header">
+                                <div class="price-display">
+                                    <span class="current-price">$149</span>
+                                    <span class="original-price">$249</span>
+                                    <span class="discount">40% OFF</span>
                                 </div>
+                                <div class="enrollment-count">
+                                    <i class="bi bi-people"></i>
+                                    <span>3,892 students enrolled</span>
+                                </div>
+                            </div>
 
-                            </div><!-- End Curriculum Tab -->
-
-                            <!-- Reviews Tab -->
-                            <div class="tab-pane fade" id="course-detailsreviews" role="tabpanel">
-
-                                <div class="reviews-summary">
-                                    <div class="rating-overview">
-                                        <div class="overall-rating">
-                                            <div class="rating-number">4.8</div>
-                                            <div class="rating-stars">
-                                                <i class="bi bi-star-fill"></i>
-                                                <i class="bi bi-star-fill"></i>
-                                                <i class="bi bi-star-fill"></i>
-                                                <i class="bi bi-star-fill"></i>
-                                                <i class="bi bi-star-half"></i>
-                                            </div>
-                                            <div class="rating-text">1,247 reviews</div>
-                                        </div>
+                            <div class="card-body">
+                                <div class="course-highlights">
+                                    <div class="highlight-item">
+                                        <i class="bi bi-trophy"></i>
+                                        <span>Certificate included</span>
+                                    </div>
+                                    <div class="highlight-item">
+                                        <i class="bi bi-clock-history"></i>
+                                        <span>45 hours content</span>
+                                    </div>
+                                    <div class="highlight-item">
+                                        <i class="bi bi-download"></i>
+                                        <span>Downloadable resources</span>
+                                    </div>
+                                    <div class="highlight-item">
+                                        <i class="bi bi-infinity"></i>
+                                        <span>Lifetime access</span>
+                                    </div>
+                                    <div class="highlight-item">
+                                        <i class="bi bi-phone"></i>
+                                        <span>Mobile access</span>
                                     </div>
                                 </div>
 
-                                <div class="reviews-list">
-                                    <div class="review-item">
-                                        <div class="reviewer-info">
-                                            <img src="?/assets/img/person/person-f-12.webp" alt="Reviewer"
-                                                class="reviewer-avatar">
-                                            <div class="reviewer-details">
-                                                <h6>Jessica Chen</h6>
-                                                <div class="review-rating">
-                                                    <i class="bi bi-star-fill"></i>
-                                                    <i class="bi bi-star-fill"></i>
-                                                    <i class="bi bi-star-fill"></i>
-                                                    <i class="bi bi-star-fill"></i>
-                                                    <i class="bi bi-star-fill"></i>
-                                                </div>
-                                            </div>
-                                            <span class="review-date">2 weeks ago</span>
-                                        </div>
-                                        <p class="review-text">Excepteur sint occaecat cupidatat non proident, sunt in
-                                            culpa qui officia deserunt mollit anim id est laborum. The instructor
-                                            explains complex concepts very clearly.</p>
-                                    </div>
-
-                                    <div class="review-item">
-                                        <div class="reviewer-info">
-                                            <img src="?/assets/img/person/person-m-5.webp" alt="Reviewer"
-                                                class="reviewer-avatar">
-                                            <div class="reviewer-details">
-                                                <h6>David Thompson</h6>
-                                                <div class="review-rating">
-                                                    <i class="bi bi-star-fill"></i>
-                                                    <i class="bi bi-star-fill"></i>
-                                                    <i class="bi bi-star-fill"></i>
-                                                    <i class="bi bi-star-fill"></i>
-                                                    <i class="bi bi-star"></i>
-                                                </div>
-                                            </div>
-                                            <span class="review-date">1 month ago</span>
-                                        </div>
-                                        <p class="review-text">Lorem ipsum dolor sit amet, consectetur adipiscing elit.
-                                            Great practical examples and real-world projects that helped me understand
-                                            the concepts better.</p>
-                                    </div>
-
+                                <div class="action-buttons">
+                                    <button class="btn-primary">Enroll Now</button>
+                                    <button class="btn-secondary">Add to Wishlist</button>
                                 </div>
 
-                            </div><!-- End Reviews Tab -->
-
-                        </div>
-                    </div><!-- End Course Navigation Tabs -->
-
-                </div>
-
-                <div class="col-lg-4">
-
-                    <!-- Enrollment Card -->
-                    <div class="enrollment-card d-none" data-aos="fade-up" data-aos-delay="200">
-
-                        <div class="card-header">
-                            <div class="price-display">
-                                <span class="current-price">$149</span>
-                                <span class="original-price">$249</span>
-                                <span class="discount">40% OFF</span>
-                            </div>
-                            <div class="enrollment-count">
-                                <i class="bi bi-people"></i>
-                                <span>3,892 students enrolled</span>
-                            </div>
-                        </div>
-
-                        <div class="card-body">
-                            <div class="course-highlights">
-                                <div class="highlight-item">
-                                    <i class="bi bi-trophy"></i>
-                                    <span>Certificate included</span>
-                                </div>
-                                <div class="highlight-item">
-                                    <i class="bi bi-clock-history"></i>
-                                    <span>45 hours content</span>
-                                </div>
-                                <div class="highlight-item">
-                                    <i class="bi bi-download"></i>
-                                    <span>Downloadable resources</span>
-                                </div>
-                                <div class="highlight-item">
-                                    <i class="bi bi-infinity"></i>
-                                    <span>Lifetime access</span>
-                                </div>
-                                <div class="highlight-item">
-                                    <i class="bi bi-phone"></i>
-                                    <span>Mobile access</span>
+                                <div class="guarantee">
+                                    <i class="bi bi-shield-check"></i>
+                                    <span>30-day money-back guarantee</span>
                                 </div>
                             </div>
 
-                            <div class="action-buttons">
-                                <button class="btn-primary">Enroll Now</button>
-                                <button class="btn-secondary">Add to Wishlist</button>
-                            </div>
+                        </div><!-- End Enrollment Card -->
 
-                            <div class="guarantee">
-                                <i class="bi bi-shield-check"></i>
-                                <span>30-day money-back guarantee</span>
-                            </div>
-                        </div>
+                        <!-- Course Details -->
+                        <div class="course-details-card" data-aos="fade-up" data-aos-delay="300">
+                            <h4>Course Details</h4>
 
-                    </div><!-- End Enrollment Card -->
-
-                    <!-- Course Details -->
-                    <div class="course-details-card" data-aos="fade-up" data-aos-delay="300">
-                        <h4>Course Details</h4>
-
-                        <div class="detail-grid">
-                            <div class="detail-row">
-                                <span class="detail-label">Duration</span>
-                                <span class="detail-value">16 weeks</span>
+                            <div class="detail-grid">
+                                <div class="detail-row">
+                                    <span class="detail-label">Duration</span>
+                                    <span class="detail-value">16 weeks</span>
+                                </div>
+                                <div class="detail-row">
+                                    <span class="detail-label">Skill Level</span>
+                                    <span class="detail-value">Intermediate</span>
+                                </div>
+                                <div class="detail-row">
+                                    <span class="detail-label">Language</span>
+                                    <span class="detail-value">English</span>
+                                </div>
+                                <div class="detail-row">
+                                    <span class="detail-label">Quizzes</span>
+                                    <span class="detail-value">24</span>
+                                </div>
+                                <div class="detail-row">
+                                    <span class="detail-label">Assignments</span>
+                                    <span class="detail-value">8 projects</span>
+                                </div>
+                                <div class="detail-row">
+                                    <span class="detail-label">Updated</span>
+                                    <span class="detail-value">December 2024</span>
+                                </div>
                             </div>
-                            <div class="detail-row">
-                                <span class="detail-label">Skill Level</span>
-                                <span class="detail-value">Intermediate</span>
-                            </div>
-                            <div class="detail-row">
-                                <span class="detail-label">Language</span>
-                                <span class="detail-value">English</span>
-                            </div>
-                            <div class="detail-row">
-                                <span class="detail-label">Quizzes</span>
-                                <span class="detail-value">24</span>
-                            </div>
-                            <div class="detail-row">
-                                <span class="detail-label">Assignments</span>
-                                <span class="detail-value">8 projects</span>
-                            </div>
-                            <div class="detail-row">
-                                <span class="detail-label">Updated</span>
-                                <span class="detail-value">December 2024</span>
-                            </div>
-                        </div>
-                    </div><!-- End Course Details -->
+                        </div><!-- End Course Details -->
 
-                    <!-- Share Course -->
-                    <div class="share-course-card" data-aos="fade-up" data-aos-delay="400">
-                        <h4>Share This Course</h4>
-                        <div class="social-links">
-                            <a href="#" class="social-link facebook">
-                                <i class="bi bi-facebook"></i>
-                            </a>
-                            <a href="#" class="social-link twitter">
-                                <i class="bi bi-twitter"></i>
-                            </a>
-                            <a href="#" class="social-link linkedin">
-                                <i class="bi bi-linkedin"></i>
-                            </a>
-                            <a href="#" class="social-link email">
-                                <i class="bi bi-envelope"></i>
-                            </a>
-                        </div>
-                    </div><!-- End Share Course -->
+                        <!-- Share Course -->
+                        <div class="share-course-card" data-aos="fade-up" data-aos-delay="400">
+                            <h4>Share This Course</h4>
+                            <div class="social-links">
+                                <a href="#" class="social-link facebook">
+                                    <i class="bi bi-facebook"></i>
+                                </a>
+                                <a href="#" class="social-link twitter">
+                                    <i class="bi bi-twitter"></i>
+                                </a>
+                                <a href="#" class="social-link linkedin">
+                                    <i class="bi bi-linkedin"></i>
+                                </a>
+                                <a href="#" class="social-link email">
+                                    <i class="bi bi-envelope"></i>
+                                </a>
+                            </div>
+                        </div><!-- End Share Course -->
 
-                </div>
+                    </div><!-- End col-lg-4 -->
 
-            </div>
+                </div><!-- End row -->
 
-        </div>
+            </div><!-- End container -->
 
     </section><!-- /Course Details Section -->
 
 </main>
 <?php
-layout('footer'); ?>
+layout('footer');
+?>
