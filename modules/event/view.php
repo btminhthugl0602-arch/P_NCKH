@@ -2,6 +2,17 @@
 if (!defined('_AUTHEN')) {
     die('Truy cập không hợp lệ');
 }
+
+require_once _PATH_URL . '/modules/functions/quan_ly_su_kien.php';
+
+$id_su_kien = isset($_GET['id']) ? (int)$_GET['id'] : 0;
+$event = btc_lay_chi_tiet_su_kien($conn, $id_su_kien);
+
+if (!$event) {
+    require_once _PATH_URL . '/modules/errors/404.php';
+    exit;
+}
+
 layout('header');
 layout('navbar');
 ?>
@@ -10,11 +21,11 @@ layout('navbar');
     <!-- Page Title -->
     <div class="page-title light-background">
         <div class="container d-lg-flex justify-content-between align-items-center">
-            <h1 class="mb-2 mb-lg-0">Tên sự kiện</h1>
+            <h1 class="mb-2 mb-lg-0"><?= htmlspecialchars($event['tenSK']) ?></h1>
             <nav class="breadcrumbs">
                 <ol>
                     <li><a href="<?php echo _HOST_URL ?>">Home</a></li>
-                    <li class="current">Tên sự kiện</li>
+                    <li class="current"><?= htmlspecialchars($event['tenSK']) ?></li>
                 </ol>
             </nav>
         </div>
@@ -32,20 +43,18 @@ layout('navbar');
                     <div class="course-hero" data-aos="fade-up" data-aos-delay="200">
                         <div class="hero-content">
                             <div class="course-badge">
-                                <span class="category">Chủ đề</span>
-                                <span class="level">Cấp: Khoa</span>
+                                <span class="category">Sự kiện</span>
+                                <span class="level">Cấp: <?= htmlspecialchars($event['tenCap'] ?? 'Chưa rõ') ?></span>
                             </div>
-                            <h1>Tên sự kiện</h1>
-                            <p class="course-subtitle">Mô tả: Master modern web development with React, Node.js, and
-                                MongoDB in
-                                this comprehensive hands-on course</p>
+                            <h1><?= htmlspecialchars($event['tenSK']) ?></h1>
+                            <p class="course-subtitle">Mô tả: <?= htmlspecialchars($event['moTa']) ?></p>
 
                             <div class="instructor-card">
                                 <img src="<?php echo _HOST_URL_TEMPLATES ?>/assets/img/person/person-m-8.webp"
                                     alt="Instructor" class="instructor-image">
                                 <div class="instructor-details">
                                     <h5>Hội đồng tổ chức</h5>
-                                    <span>Khoa CNTT - Trường Đại học Sư phạm Hà Nội</span>
+                                    <span><?= htmlspecialchars($event['nguoiTaoTen'] ?? 'BTC') ?></span>
                                     <div class="instructor-rating">
                                         <i class="bi bi-star-fill"></i>
                                         <i class="bi bi-star-fill"></i>
@@ -102,11 +111,7 @@ layout('navbar');
 
                                 <div class="overview-section">
                                     <h3>Chi tiết sự kiện</h3>
-                                    <p>Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium
-                                        doloremque laudantium, totam rem aperiam, eaque ipsa quae ab illo inventore
-                                        veritatis et quasi architecto beatae vitae dicta sunt explicabo.</p>
-                                    <p>Nemo enim ipsam voluptatem quia voluptas sit aspernatur aut odit aut fugit, sed
-                                        quia consequuntur magni dolores eos qui ratione voluptatem sequi nesciunt.</p>
+                                    <p><?= nl2br(htmlspecialchars($event['moTa'])) ?></p>
                                 </div>
 
                                 <div class="skills-grid">
@@ -516,26 +521,26 @@ layout('navbar');
                             <div class="tab-pane fade" id="event-config" role="tabpanel">
                                 <div class="event-config-content" data-aos="fade-up" data-aos-delay="100">
                                     <h3>Cấu hình sự kiện</h3>
-                                    <p>Đây là nơi bạn có thể cấu hình các thiết lập liên quan đến sự kiện, bao gồm:</p>
-                                    <ul>
-                                        <li><strong>Thông tin cơ bản:</strong> <button
-                                                class="btn btn-primary">Nút1</button>
-                                        </li>
-                                        <li><strong>Phân công phản biện</strong> <button
-                                                class="btn btn-primary">Nút2</button></li>
-                                        <li><strong>Thống kê bài nộp</strong> <button
-                                                class="btn btn-primary">Nút3</button></li>
-                                        <li><strong>Quản lý tiểu ban</strong> <button class="btn btn-primary">
-                                                Nút4</button></li>
-                                        <li><strong>Phân công BGK</strong> <button class="btn btn-primary">Nút5</button>
-                                        </li>
-                                        <li><strong>Trao giải</strong> <button class="btn btn-primary">Nút6</button>
-                                        </li>
-                                    </ul>
-                                    <p>Sau khi cấu hình xong, đừng quên lưu lại để áp dụng các thay đổi!<button
-                                            class="btn btn-primary">Lưu</button></p>
+                                    <p>Chọn khu vực cấu hình phù hợp để thiết lập quy chế, vòng thi và bộ tiêu chí.</p>
 
-
+                                    <div class="d-flex flex-column gap-2">
+                                        <a class="btn btn-primary" href="<?php echo _HOST_URL ?>/?module=event&action=config_rounds&id=<?php echo (int)$id_su_kien; ?>">
+                                            Cấu hình cơ bản
+                                        </a>
+                                        <a class="btn btn-primary" href="<?php echo _HOST_URL ?>/?module=event&action=config_rules&id=<?php echo (int)$id_su_kien; ?>">
+                                            Quy chế & Điều kiện
+                                        </a>
+                                        
+                                        <a class="btn btn-primary" href="<?php echo _HOST_URL ?>/?module=event&action=config_criteria&id=<?php echo (int)$id_su_kien; ?>">
+                                            Bộ tiêu chí & Chấm điểm
+                                        </a>
+                                        <a class="btn btn-primary" href="<?php echo _HOST_URL ?>/?module=event&action=config_assign&id=<?php echo (int)$id_su_kien; ?>">
+                                            Phân công chấm
+                                        </a>
+                                        <a class="btn btn-primary" href="<?php echo _HOST_URL ?>/?module=event&action=config_schedule&id=<?php echo (int)$id_su_kien; ?>">
+                                            Lập lịch tổ chức
+                                        </a>
+                                    </div>
                                 </div><!-- End Cấu hình Tab -->
 
                             </div><!-- End EventDetailsContent -->
