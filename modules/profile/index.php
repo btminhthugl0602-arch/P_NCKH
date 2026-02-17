@@ -2,7 +2,8 @@
 if (!defined('_AUTHEN')) {
     die('Truy cập không hợp lệ');
 }
-
+layout('header');
+layput('navbar');
 ?>
 <main class="main">
 
