@@ -1,6 +1,10 @@
 <?php
 const _AUTHEN = true;
 
+// Bật chế độ bỏ qua kiểm tra quyền (DEV)
+// Khi deploy thật thì set false
+const _BYPASS_AUTH = true;
+
 const _MODULES = 'home';
 const _ACTION = 'index';
 

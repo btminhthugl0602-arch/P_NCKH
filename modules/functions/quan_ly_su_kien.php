@@ -11,8 +11,8 @@
         }
 
         $result = _insert_info($conn, 'SUKIEN', 
-            ['tenSK', 'moTa', 'trangThai', 'nguoiTao'], 
-            [$ten_su_kien, $mo_ta, 'NHAP', $id_nguoi_tao]
+            ['tenSK', 'moTa', 'nguoiTao', 'isActive'], 
+            [$ten_su_kien, $mo_ta, $id_nguoi_tao, 1]
         );
 
         if (!$result) {
@@ -59,5 +59,34 @@
         }
 
         return ['status' => true, 'message' => 'Cập nhật sự kiện thành công'];
+    }
+
+    /**
+     * Lấy đầy đủ thông tin sự kiện để hiển thị
+     */
+    function btc_lay_chi_tiet_su_kien($conn, $id_su_kien) {
+        $id_su_kien = (int)$id_su_kien;
+
+        $sql = "SELECT sk.*, ct.tenCap, tk.tenTK as nguoiTaoTen
+                FROM sukien sk
+                LEFT JOIN cap_tochuc ct ON sk.idCap = ct.idCap
+                LEFT JOIN taikhoan tk ON sk.nguoiTao = tk.idTK
+                WHERE sk.idSK = ? LIMIT 1";
+
+        $stmt = mysqli_prepare($conn, $sql);
+        if (!$stmt) return null;
+
+        mysqli_stmt_bind_param($stmt, "i", $id_su_kien);
+
+        if (!mysqli_stmt_execute($stmt)) {
+            mysqli_stmt_close($stmt);
+            return null;
+        }
+
+        $result = mysqli_stmt_get_result($stmt);
+        $data = mysqli_fetch_assoc($result);
+
+        mysqli_stmt_close($stmt);
+        return $data ?: null;
     }
 ?>
