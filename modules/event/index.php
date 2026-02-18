@@ -91,48 +91,79 @@ layout('navbar');
 
                 <div class="col-lg-8">
                     <?php foreach ($events as $event):
-                        $ngayMoDangKy = date('d/m/Y', strtotime($event['ngayMoDangKy']));
-                        $ngayDongDangKy = date('d/m/Y', strtotime($event['ngayDongDangKy']));
-                        $ngayBatDau = date('d/m/Y', strtotime($event['ngayBatDau']));
-                        $ngayKetThuc = date('d/m/Y', strtotime($event['ngayKetThuc']));
 
-                        $now = time();
-                        $batDau = strtotime($event['ngayBatDau']);
-                        $ketThuc = strtotime($event['ngayKetThuc']);
-                        $moDangKy = strtotime($event['ngayMoDangKy']);
-                        $dongDangKy = strtotime($event['ngayDongDangKy']);
+    $ngayMoDangKy = !empty($event['ngayMoDangKy'])
+        ? date('d/m/Y', strtotime($event['ngayMoDangKy']))
+        : 'Chưa cập nhật';
 
-                        $trangThai = '';
-                        $badgeClass = '';
-                        if ($now < $moDangKy) {
-                            $trangThai = 'Sắp mở đăng ký';
-                            $badgeClass = 'bg-gradient-secondary';
-                        } elseif ($now >= $moDangKy && $now <= $dongDangKy) {
-                            $trangThai = 'Đang mở đăng ký';
-                            $badgeClass = 'bg-gradient-success';
-                        } elseif ($now > $dongDangKy && $now < $batDau) {
-                            $trangThai = 'Đã đóng đăng ký';
-                            $badgeClass = 'bg-gradient-warning';
-                        } elseif ($now >= $batDau && $now <= $ketThuc) {
-                            $trangThai = 'Đang diễn ra';
-                            $badgeClass = 'bg-gradient-info';
-                        } else {
-                            $trangThai = 'Đã kết thúc';
-                            $badgeClass = 'bg-gradient-dark';
-                        }
-                    ?>
+    $ngayDongDangKy = !empty($event['ngayDongDangKy'])
+        ? date('d/m/Y', strtotime($event['ngayDongDangKy']))
+        : 'Chưa cập nhật';
+
+    $ngayBatDau = !empty($event['ngayBatDau'])
+        ? date('d/m/Y', strtotime($event['ngayBatDau']))
+        : 'Chưa xác định';
+
+    $ngayKetThuc = !empty($event['ngayKetThuc'])
+        ? date('d/m/Y', strtotime($event['ngayKetThuc']))
+        : 'Chưa xác định';
+
+
+    $now = time();
+
+    $batDau = !empty($event['ngayBatDau']) ? strtotime($event['ngayBatDau']) : null;
+    $ketThuc = !empty($event['ngayKetThuc']) ? strtotime($event['ngayKetThuc']) : null;
+    $moDangKy = !empty($event['ngayMoDangKy']) ? strtotime($event['ngayMoDangKy']) : null;
+    $dongDangKy = !empty($event['ngayDongDangKy']) ? strtotime($event['ngayDongDangKy']) : null;
+
+    $trangThai = '';
+    $badgeClass = '';
+
+    if ($moDangKy && $now < $moDangKy) {
+        $trangThai = 'Sắp mở đăng ký';
+        $badgeClass = 'bg-gradient-secondary';
+
+    } elseif ($moDangKy && $dongDangKy && $now >= $moDangKy && $now <= $dongDangKy) {
+        $trangThai = 'Đang mở đăng ký';
+        $badgeClass = 'bg-gradient-success';
+
+    } elseif ($dongDangKy && $batDau && $now > $dongDangKy && $now < $batDau) {
+        $trangThai = 'Đã đóng đăng ký';
+        $badgeClass = 'bg-gradient-warning';
+
+    } elseif ($batDau && $ketThuc && $now >= $batDau && $now <= $ketThuc) {
+        $trangThai = 'Đang diễn ra';
+        $badgeClass = 'bg-gradient-info';
+
+    } elseif ($ketThuc && $now > $ketThuc) {
+        $trangThai = 'Đã kết thúc';
+        $badgeClass = 'bg-gradient-dark';
+
+    } else {
+        $trangThai = 'Chưa cấu hình thời gian';
+        $badgeClass = 'bg-gradient-secondary';
+    }
+?>
                         <article class="event-card" data-aos="fade-up" data-aos-delay="200">
                             <div class="row g-0">
                                 <div class="col-md-4">
                                     <div class="event-image">
-                                        <img src="<?php echo _HOST_URL_TEMPLATES ?>/assets/img/education/events-3.webp"
-                                            class="img-fluid" alt="Event Image">
+                                        <img src="<?= _HOST_URL_TEMPLATES ?>/assets/img/images.png" class="img-fluid">
                                         <div class="date-badge">
-                                            <span
-                                                class="day"><?php echo date('d', strtotime($events[0]['ngayBatDau'])); ?></span>
-                                            <span
-                                                class="month"><?php echo date('M', strtotime($events[0]['ngayBatDau'])); ?></span>
-                                        </div>
+<?php
+$ngayBatDau = !empty($events[0]['ngayBatDau'])
+    ? strtotime($events[0]['ngayBatDau'])
+    : null;
+
+if ($ngayBatDau) {
+    echo '<span class="day">' . date('d', $ngayBatDau) . '</span>';
+    echo '<span class="month">' . date('M', $ngayBatDau) . '</span>';
+} else {
+    echo '<span class="day">--</span>';
+    echo '<span class="month">---</span>';
+}
+?>
+</div>
                                     </div>
                                 </div>
                                 <div class="col-md-8">
@@ -158,7 +189,7 @@ layout('navbar');
                                             </div>
                                         </div>
                                         <div class="event-actions">
-                                            <a href="<?php echo _HOST_URL ?>/?module=event&action=view"
+                                            <a href="<?= _HOST_URL ?>?module=event&action=view&id=<?= $event['idSK'] ?>"
                                                 class="btn btn-primary">Xem
                                                 sự kiện</a>
                                             <a href="#" class="btn btn-outline">Learn More</a>
