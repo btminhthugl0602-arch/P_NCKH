@@ -348,8 +348,7 @@ layout('navbar');
                             <div class="row g-0">
                                 <div class="col-md-4">
                                     <div class="event-image">
-                                        <img src="<?php echo _HOST_URL_TEMPLATES ?>/assets/img/education/events-3.webp"
-                                            class="img-fluid" alt="Event Image">
+                                        <img src="<?= _HOST_URL_TEMPLATES ?>/assets/img/images.png" class="img-fluid">
                                         <div class="date-badge">
                                             <span
                                                 class="day"><?= $event['ngayBatDau'] ? date('d', strtotime($event['ngayBatDau'])) : '--' ?></span>

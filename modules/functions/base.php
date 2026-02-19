@@ -205,6 +205,11 @@ function anh_xa_ma_quyen($conn, $ma_quyen)
 
 function kiem_tra_quyen_he_thong($conn, $id_tai_khoan, $ma_quyen)
 {
+    // DEV MODE: bypass quyền
+    if (defined('_BYPASS_AUTH') && _BYPASS_AUTH === true) {
+        return true;
+    }
+
     $user = truy_van_mot_ban_ghi($conn, 'TAIKHOAN', 'idTK', $id_tai_khoan);
     if (!$user) return false;
 

@@ -2,6 +2,121 @@
 if (!defined('_AUTHEN')) {
     die('Truy cập không hợp lệ');
 }
+global $conn;
+$id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
+
+if ($id <= 0) {
+    die('ID không hợp lệ');
+}
+
+$sql = "SELECT * FROM sukien WHERE idSK = $id";
+$result = mysqli_query($conn, $sql);
+$event = mysqli_fetch_assoc($result);
+
+if (!$event) {
+    die('Không tìm thấy sự kiện');
+}
+// Lấy danh sách nhóm theo sự kiện
+$sql = "
+    SELECT n.idnhom,
+           t.tennhom,
+           t.mota,
+           t.soluongtoida,
+           t.dangtuyen,
+           tb.tenTieuBan,
+           COUNT(tv.idtk) as soThanhVien
+    FROM nhom n
+    LEFT JOIN thongtinnhom t ON n.idnhom = t.idnhom
+    LEFT JOIN tieuban tb ON n.idTieuBan = tb.idTieuBan
+    LEFT JOIN thanhviennhom tv 
+           ON n.idnhom = tv.idnhom 
+           AND tv.trangthai = 1
+    WHERE n.idSK = $id
+    GROUP BY n.idnhom,
+             t.tennhom,
+             t.mota,
+             t.soluongtoida,
+             t.dangtuyen,
+             tb.tenTieuBan
+";
+
+// ================== XỬ LÝ TẠO NHÓM ==================
+if (isset($_POST['create_group'])) {
+
+    if (!isset($_SESSION['user_id'])) {
+        die("Bạn cần đăng nhập");
+    }
+
+    $userId = (int)$_SESSION['user_id'];
+
+    $tennhom = mysqli_real_escape_string($conn, $_POST['tennhom']);
+    $mota = mysqli_real_escape_string($conn, $_POST['mota']);
+    $congkhai = (int)$_POST['congkhai'];
+
+    if (!empty($tennhom)) {
+
+        // 1️⃣ Tạo nhóm
+        $sqlInsertNhom = "INSERT INTO nhom (idSK) VALUES ($id)";
+        mysqli_query($conn, $sqlInsertNhom);
+        $idNhom = mysqli_insert_id($conn);
+
+        // 2️⃣ Thông tin nhóm
+        $sqlInfo = "INSERT INTO thongtinnhom 
+                    (idnhom, tennhom, mota, soluongtoida, dangtuyen, congkhai)
+                    VALUES 
+                    ($idNhom, '$tennhom', '$mota', 5, 1, $congkhai)";
+        mysqli_query($conn, $sqlInfo);
+
+        // 3️⃣ Thêm trưởng nhóm
+        $sqlMember = "INSERT INTO thanhviennhom
+                      (idnhom, idtk, trangthai, truongnhom)
+                      VALUES
+                      ($idNhom, $userId, 1, 1)";
+        mysqli_query($conn, $sqlMember);
+
+        // reload trang
+        header("Location: " . $_SERVER['REQUEST_URI']);
+        exit();
+    }
+}
+$result = mysqli_query($conn, $sql);
+$groups = mysqli_fetch_all($result, MYSQLI_ASSOC);
+// Lấy nhóm của user hiện tại
+$myGroups = [];
+
+if (isset($_SESSION['user_id'])) {
+    $userId = (int)$_SESSION['user_id'];
+
+    $sqlMy = "
+    SELECT n.idnhom,
+           t.tennhom,
+           t.mota,
+           t.soluongtoida,
+           tb.tenTieuBan,
+           COUNT(tv2.idtk) as soThanhVien
+    FROM nhom n
+    JOIN thanhviennhom tv 
+         ON n.idnhom = tv.idnhom
+    LEFT JOIN thongtinnhom t 
+         ON n.idnhom = t.idnhom
+    LEFT JOIN tieuban tb 
+         ON n.idTieuBan = tb.idTieuBan
+    LEFT JOIN thanhviennhom tv2
+         ON n.idnhom = tv2.idnhom
+         AND tv2.trangthai = 1
+    WHERE tv.idtk = $userId
+      AND tv.trangthai = 1
+      AND n.idSK = $id
+    GROUP BY n.idnhom, 
+             t.tennhom, 
+             t.mota, 
+             t.soluongtoida,
+             tb.tenTieuBan
+";
+
+    $resultMy = mysqli_query($conn, $sqlMy);
+    $myGroups = mysqli_fetch_all($resultMy, MYSQLI_ASSOC);
+}
 layout('header');
 layout('navbar');
 ?>
@@ -10,11 +125,11 @@ layout('navbar');
     <!-- Page Title -->
     <div class="page-title light-background">
         <div class="container d-lg-flex justify-content-between align-items-center">
-            <h1 class="mb-2 mb-lg-0">Tên sự kiện</h1>
+           <h1 class="mb-2 mb-lg-0"><?= htmlspecialchars($event['tenSK']) ?></h1>
             <nav class="breadcrumbs">
                 <ol>
                     <li><a href="<?php echo _HOST_URL ?>">Home</a></li>
-                    <li class="current">Tên sự kiện</li>
+                    <li class="current"><?= htmlspecialchars($event['tenSK']) ?></li>
                 </ol>
             </nav>
         </div>
@@ -35,10 +150,10 @@ layout('navbar');
                                 <span class="category">Chủ đề</span>
                                 <span class="level">Cấp: Khoa</span>
                             </div>
-                            <h1>Tên sự kiện</h1>
-                            <p class="course-subtitle">Mô tả: Master modern web development with React, Node.js, and
-                                MongoDB in
-                                this comprehensive hands-on course</p>
+                            <h1><?= htmlspecialchars($event['tenSK']) ?></h1>
+                            <p class="course-subtitle">
+    <?= nl2br(htmlspecialchars($event['moTa'])) ?>
+</p>
 
                             <div class="instructor-card">
                                 <img src="<?php echo _HOST_URL_TEMPLATES ?>/assets/img/person/person-m-8.webp"
@@ -223,111 +338,43 @@ layout('navbar');
                                                             <div class="courses-grid" data-aos="fade-up"
                                                                 data-aos-delay="200">
                                                                 <div class="row">
-                                                                    <div class="col-lg-6 col-md-6">
-                                                                        <div class="course-card">
-                                                                            <div class="course-image">
-                                                                                <img src="<?php echo _HOST_URL_TEMPLATES ?>/assets/img/education/courses-3.webp"
-                                                                                    alt="Course" class="img-fluid">
-                                                                                <div class="course-badge">Đã đủ thành
-                                                                                    viên
-                                                                                </div>
-                                                                                <div class="course-price">5/5</div>
-                                                                            </div>
-                                                                            <div class="course-content">
-                                                                                <div class="course-meta">
-                                                                                    <span
-                                                                                        class="category">Programming</span>
-                                                                                    <span
-                                                                                        class="level">Intermediate</span>
-                                                                                </div>
-                                                                                <h3>Tên nhóm</h3>
-                                                                                <p>Mô tả nhóm</p>
-                                                                                <div class="course-stats">
-                                                                                    <div class="stat">
-                                                                                        <i class="bi bi-clock"></i>
-                                                                                        <span>15 hours</span>
-                                                                                    </div>
-                                                                                    <div class="stat">
-                                                                                        <i class="bi bi-people"></i>
-                                                                                        <span>1,245 students</span>
-                                                                                    </div>
-                                                                                    <div class="rating">
-                                                                                        <i class="bi bi-star-fill"></i>
-                                                                                        <i class="bi bi-star-fill"></i>
-                                                                                        <i class="bi bi-star-fill"></i>
-                                                                                        <i class="bi bi-star-fill"></i>
-                                                                                        <i class="bi bi-star-fill"></i>
-                                                                                        <span>5 (89 reviews)</span>
-                                                                                    </div>
-                                                                                </div>
-                                                                                <div class="instructor-info">
-                                                                                    <img src="<?php echo _HOST_URL_TEMPLATES ?>/assets/img/person/person-m-3.webp"
-                                                                                        alt="Instructor"
-                                                                                        class="instructor-avatar">
-                                                                                    <span class="instructor-name">Giảng
-                                                                                        viên hướng dẫn / Nhóm
-                                                                                        trưởng</span>
-                                                                                </div>
-                                                                                <a href="enroll.html"
-                                                                                    class="btn-course">Xin vào / Đã
-                                                                                    đủ</a>
-                                                                            </div>
-                                                                        </div><!-- End Course Card -->
-                                                                    </div>
+        <?php if (!empty($groups)): ?>
+            <?php foreach ($groups as $group): ?>
 
-                                                                    <div class="col-lg-6 col-md-6">
-                                                                        <div class="course-card">
-                                                                            <div class="course-image">
-                                                                                <img src="<?php echo _HOST_URL_TEMPLATES ?>/assets/img/education/courses-7.webp"
-                                                                                    alt="Course" class="img-fluid">
-                                                                                <div class="course-badge badge-free">
-                                                                                    Free</div>
-                                                                            </div>
-                                                                            <div class="course-content">
-                                                                                <div class="course-meta">
-                                                                                    <span class="category">Design</span>
-                                                                                    <span class="level">Beginner</span>
-                                                                                </div>
-                                                                                <h3>UI/UX Design Fundamentals</h3>
-                                                                                <p>Mauris blandit aliquet elit, eget
-                                                                                    tincidunt nibh pulvinar a.
-                                                                                    Vestibulum ac diam sit amet quam
-                                                                                    vehicula elementum sed sit amet.</p>
-                                                                                <div class="course-stats">
-                                                                                    <div class="stat">
-                                                                                        <i class="bi bi-clock"></i>
-                                                                                        <span>8 hours</span>
-                                                                                    </div>
-                                                                                    <div class="stat">
-                                                                                        <i class="bi bi-people"></i>
-                                                                                        <span>2,891 students</span>
-                                                                                    </div>
-                                                                                    <div class="rating">
-                                                                                        <i class="bi bi-star-fill"></i>
-                                                                                        <i class="bi bi-star-fill"></i>
-                                                                                        <i class="bi bi-star-fill"></i>
-                                                                                        <i class="bi bi-star-fill"></i>
-                                                                                        <i class="bi bi-star"></i>
-                                                                                        <span>4.6 (156 reviews)</span>
-                                                                                    </div>
-                                                                                </div>
-                                                                                <div class="instructor-info">
-                                                                                    <img src="<?php echo _HOST_URL_TEMPLATES ?>/assets/img/person/person-f-7.webp"
-                                                                                        alt="Instructor"
-                                                                                        class="instructor-avatar">
-                                                                                    <span class="instructor-name">Sarah
-                                                                                        Johnson</span>
-                                                                                </div>
-                                                                                <a href="enroll.html"
-                                                                                    class="btn-course">Start Free
-                                                                                    Course</a>
-                                                                            </div>
-                                                                        </div><!-- End Course Card -->
-                                                                    </div>
+                <div class="col-lg-6 col-md-6">
+                    <div class="course-card">
+                        <div class="course-content">
+                            <h3><?= htmlspecialchars($group['tennhom']) ?></h3>
 
-                                                                </div>
-                                                            </div><!-- End Courses Grid -->
+<p class="text-muted mb-1">
+    <i class="bi bi-diagram-3"></i>
+    Tiểu ban: 
+    <?= htmlspecialchars($group['tenTieuBan'] ?? 'Chưa phân') ?>
+</p>
 
+<p><?= htmlspecialchars($group['mota']) ?></p>
+
+                            <div class="course-stats">
+                                <div class="stat">
+                                    <i class="bi bi-people"></i>
+                                    <span>
+                                        <?= $group['soThanhVien'] ?> /
+                                        <?= $group['soluongtoida'] ?> thành viên
+                                    </span>
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+                <?php endforeach; ?>
+
+            <?php else: ?>
+    <div class="col-12">
+        <p>Chưa có nhóm nào.</p>
+    </div>
+<?php endif; ?>
+    </div>
                                                             <div class="pagination-wrapper" data-aos="fade-up"
                                                                 data-aos-delay="300">
                                                                 <nav aria-label="Courses pagination">
@@ -374,125 +421,82 @@ layout('navbar');
 
                                                     <div class="row">
                                                         <div class="col-lg-12">
-                                                            <div class="courses-header" data-aos="fade-left"
-                                                                data-aos-delay="100">
-                                                                <div class="search-box">
-                                                                    <i class="bi bi-search"></i>
-                                                                    <input type="text" placeholder="Tìm kiếm nhóm...">
-                                                                </div>
-                                                                <div class="sort-dropdown">
-                                                                    <select>
-                                                                        <option>Sắp xếp theo: Tất cả</option>
-                                                                        <option>Nhóm của tôi</option>
-                                                                        <option>Thành viên: Ít tới nhiều</option>
-                                                                        <option>Thành viên: Nhiều tới ít</option>
-                                                                    </select>
-                                                                </div>
-                                                            </div>
+                                                            <div class="courses-header d-flex justify-content-between align-items-center" 
+     data-aos="fade-left" data-aos-delay="100">
 
-                                                            <div class="courses-grid" data-aos="fade-up"
-                                                                data-aos-delay="200">
-                                                                <div class="row">
-                                                                    <div class="col-lg-6 col-md-6">
-                                                                        <div class="course-card">
-                                                                            <div class="course-image">
-                                                                                <img src="<?php echo _HOST_URL_TEMPLATES ?>/assets/img/education/courses-3.webp"
-                                                                                    alt="Course" class="img-fluid">
-                                                                                <div class="course-badge">Đã đủ thành
-                                                                                    viên
-                                                                                </div>
-                                                                                <div class="course-price">5/5</div>
-                                                                            </div>
-                                                                            <div class="course-content">
-                                                                                <div class="course-meta">
-                                                                                    <span
-                                                                                        class="category">Programming</span>
-                                                                                    <span
-                                                                                        class="level">Intermediate</span>
-                                                                                </div>
-                                                                                <h3>Tên nhóm</h3>
-                                                                                <p>Mô tả nhóm</p>
-                                                                                <div class="course-stats">
-                                                                                    <div class="stat">
-                                                                                        <i class="bi bi-clock"></i>
-                                                                                        <span>15 hours</span>
-                                                                                    </div>
-                                                                                    <div class="stat">
-                                                                                        <i class="bi bi-people"></i>
-                                                                                        <span>1,245 students</span>
-                                                                                    </div>
-                                                                                    <div class="rating">
-                                                                                        <i class="bi bi-star-fill"></i>
-                                                                                        <i class="bi bi-star-fill"></i>
-                                                                                        <i class="bi bi-star-fill"></i>
-                                                                                        <i class="bi bi-star-fill"></i>
-                                                                                        <i class="bi bi-star-fill"></i>
-                                                                                        <span>5 (89 reviews)</span>
-                                                                                    </div>
-                                                                                </div>
-                                                                                <div class="instructor-info">
-                                                                                    <img src="<?php echo _HOST_URL_TEMPLATES ?>/assets/img/person/person-m-3.webp"
-                                                                                        alt="Instructor"
-                                                                                        class="instructor-avatar">
-                                                                                    <span class="instructor-name">Giảng
-                                                                                        viên hướng dẫn / Nhóm
-                                                                                        trưởng</span>
-                                                                                </div>
-                                                                                <a href="enroll.html"
-                                                                                    class="btn-course">Xin vào / Đã
-                                                                                    đủ</a>
-                                                                            </div>
-                                                                        </div><!-- End Course Card -->
+    <div class="search-box">
+        <i class="bi bi-search"></i>
+        <input type="text" placeholder="Tìm kiếm nhóm...">
+    </div>
+
+    <div class="d-flex gap-2">
+        <div class="sort-dropdown">
+            <select>
+                <option>Sắp xếp theo: Tất cả</option>
+                <option>Thành viên: Ít tới nhiều</option>
+                <option>Thành viên: Nhiều tới ít</option>
+            </select>
+        </div>
+
+        <!-- Nút tạo nhóm -->
+        <button class="btn btn-primary"
+        data-bs-toggle="modal"
+        data-bs-target="#createGroupModal">
+    Tạo nhóm
+</button>
+    </div>
+
+</div>
+
+                                                            
+                                                                    <div class="courses-grid" data-aos="fade-up" data-aos-delay="200">
+    <div class="row">
+
+        <?php if (!empty($myGroups)): ?>
+            <?php foreach ($myGroups as $group): ?>
+
+                <div class="col-lg-6 col-md-6">
+                    <div class="course-card">
+                        <div class="course-content">
+                            <h3><?= htmlspecialchars($group['tennhom']) ?></h3>
+
+<p class="text-muted mb-1">
+    <i class="bi bi-diagram-3"></i>
+    Tiểu ban: 
+    <?= htmlspecialchars($group['tenTieuBan'] ?? 'Chưa phân') ?>
+</p>
+
+<p><?= htmlspecialchars($group['mota']) ?></p>
+
+                            <div class="course-stats">
+                                <div class="stat">
+                                    <i class="bi bi-people"></i>
+                                    <span>
+                                        <?= $group['soThanhVien'] ?> /
+                                        <?= $group['soluongtoida'] ?> thành viên
+                                    </span>
+                                </div>
+                            </div>
+
+                            <a href="<?= _HOST_URL ?>?module=group&action=view&id=<?= $group['idnhom'] ?>"
+                               class="btn-course">
+                                Xem nhóm
+                            </a>
+
+                        </div>
+                    </div>
+                </div>
+
+            <?php endforeach; ?>
+
+        <?php else: ?>
+            <div class="col-12 text-center">
+                <p>Bạn chưa tham gia nhóm nào.</p>
+            </div>
+        <?php endif; ?>
+</div><!-- End Course Card -->
                                                                     </div>
-
-                                                                    <div class="col-lg-6 col-md-6">
-                                                                        <div class="course-card">
-                                                                            <div class="course-image">
-                                                                                <img src="<?php echo _HOST_URL_TEMPLATES ?>/assets/img/education/courses-7.webp"
-                                                                                    alt="Course" class="img-fluid">
-                                                                                <div class="course-badge badge-free">
-                                                                                    Free</div>
-                                                                            </div>
-                                                                            <div class="course-content">
-                                                                                <div class="course-meta">
-                                                                                    <span class="category">Design</span>
-                                                                                    <span class="level">Beginner</span>
-                                                                                </div>
-                                                                                <h3>UI/UX Design Fundamentals</h3>
-                                                                                <p>Mauris blandit aliquet elit, eget
-                                                                                    tincidunt nibh pulvinar a.
-                                                                                    Vestibulum ac diam sit amet quam
-                                                                                    vehicula elementum sed sit amet.</p>
-                                                                                <div class="course-stats">
-                                                                                    <div class="stat">
-                                                                                        <i class="bi bi-clock"></i>
-                                                                                        <span>8 hours</span>
-                                                                                    </div>
-                                                                                    <div class="stat">
-                                                                                        <i class="bi bi-people"></i>
-                                                                                        <span>2,891 students</span>
-                                                                                    </div>
-                                                                                    <div class="rating">
-                                                                                        <i class="bi bi-star-fill"></i>
-                                                                                        <i class="bi bi-star-fill"></i>
-                                                                                        <i class="bi bi-star-fill"></i>
-                                                                                        <i class="bi bi-star-fill"></i>
-                                                                                        <i class="bi bi-star"></i>
-                                                                                        <span>4.6 (156 reviews)</span>
-                                                                                    </div>
-                                                                                </div>
-                                                                                <div class="instructor-info">
-                                                                                    <img src="<?php echo _HOST_URL_TEMPLATES ?>/assets/img/person/person-f-7.webp"
-                                                                                        alt="Instructor"
-                                                                                        class="instructor-avatar">
-                                                                                    <span class="instructor-name">Sarah
-                                                                                        Johnson</span>
-                                                                                </div>
-                                                                                <a href="enroll.html"
-                                                                                    class="btn-course">Start Free
-                                                                                    Course</a>
-                                                                            </div>
-                                                                        </div><!-- End Course Card -->
+<!-- End Course Card -->
                                                                     </div>
 
                                                                 </div>
@@ -657,6 +661,70 @@ layout('navbar');
     </section><!-- /Course Details Section -->
 
 </main>
+<!-- ================= MODAL TẠO NHÓM ================= -->
+<div class="modal fade" id="createGroupModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+
+            <form method="POST">
+
+                <div class="modal-header">
+                    <h5 class="modal-title">Tạo nhóm mới</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+
+                <div class="modal-body">
+
+                    <div class="mb-3">
+                        <label class="form-label">Tên nhóm</label>
+                        <input type="text" name="tennhom" class="form-control" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Mô tả nhóm</label>
+                        <textarea name="mota" class="form-control" rows="3"></textarea>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Loại nhóm</label>
+
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio"
+                                   name="congkhai" value="1" checked>
+                            <label class="form-check-label">
+                                Công khai
+                            </label>
+                        </div>
+
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio"
+                                   name="congkhai" value="0">
+                            <label class="form-check-label">
+                                Riêng tư
+                            </label>
+                        </div>
+                    </div>
+
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary"
+                            data-bs-dismiss="modal">
+                        Huỷ
+                    </button>
+
+                    <button type="submit"
+                            name="create_group"
+                            class="btn btn-primary">
+                        Tạo nhóm
+                    </button>
+                </div>
+
+            </form>
+
+        </div>
+    </div>
+</div>
 <?php
 layout('footer');
 ?>
