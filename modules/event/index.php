@@ -54,29 +54,33 @@ $data = [
 
 $active_page = 'event';
 
-// Lấy danh sách sự kiện
+// ---- Pagination ----
+$per_page   = 8;
+$cur_page   = isset($_GET['page']) ? max(1, (int)$_GET['page']) : 1;
+
+// Xây dựng WHERE
+$where = "WHERE sk.isActive = 1";
+if (!empty($search))   $where .= " AND (sk.tenSK LIKE '%$search%' OR sk.moTa LIKE '%$search%')";
+if ($filter_cap > 0)   $where .= " AND sk.idCap = $filter_cap";
+if ($filter_time === 'today')   $where .= " AND DATE(sk.ngayBatDau) = CURDATE()";
+elseif ($filter_time === 'week')    $where .= " AND sk.ngayBatDau BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 7 DAY)";
+elseif ($filter_time === 'month')   $where .= " AND sk.ngayBatDau BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 1 MONTH)";
+elseif ($filter_time === 'quarter') $where .= " AND sk.ngayBatDau BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 3 MONTH)";
+
+// Đếm tổng
+$cnt_res   = mysqli_query($conn, "SELECT COUNT(*) as c FROM sukien sk $where");
+$total_sk  = (int)mysqli_fetch_assoc($cnt_res)['c'];
+$total_pages = max(1, ceil($total_sk / $per_page));
+$cur_page    = min($cur_page, $total_pages);
+$offset      = ($cur_page - 1) * $per_page;
+
+// Lấy danh sách sự kiện có LIMIT
 $sql = "SELECT sk.*, ct.tenCap, tk.tenTK as nguoiTaoTen
         FROM sukien sk
         LEFT JOIN cap_tochuc ct ON sk.idCap = ct.idCap
         LEFT JOIN taikhoan tk ON sk.nguoiTao = tk.idTK
-        WHERE sk.isActive = 1";
-
-if (!empty($search)) {
-    $sql .= " AND (sk.tenSK LIKE '%$search%' OR sk.moTa LIKE '%$search%')";
-}
-if ($filter_cap > 0) {
-    $sql .= " AND sk.idCap = $filter_cap";
-}
-if ($filter_time === 'today') {
-    $sql .= " AND DATE(sk.ngayBatDau) = CURDATE()";
-} elseif ($filter_time === 'week') {
-    $sql .= " AND sk.ngayBatDau BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 7 DAY)";
-} elseif ($filter_time === 'month') {
-    $sql .= " AND sk.ngayBatDau BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 1 MONTH)";
-} elseif ($filter_time === 'quarter') {
-    $sql .= " AND sk.ngayBatDau BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 3 MONTH)";
-}
-$sql .= " ORDER BY sk.idSK DESC";
+        $where ORDER BY sk.idSK DESC
+        LIMIT $per_page OFFSET $offset";
 
 $result = mysqli_query($conn, $sql);
 $events = [];
@@ -84,6 +88,16 @@ if ($result && mysqli_num_rows($result) > 0) {
     while ($row = mysqli_fetch_assoc($result)) {
         $events[] = $row;
     }
+}
+
+// Helper tạo URL giữ nguyên filter
+function event_page_url($page, $search, $filter_cap, $filter_time)
+{
+    $p = ['module' => 'event', 'action' => 'index', 'page' => $page];
+    if (!empty($search))     $p['search']      = $search;
+    if ($filter_cap > 0)     $p['filter_cap']  = $filter_cap;
+    if (!empty($filter_time)) $p['filter_time'] = $filter_time;
+    return '?' . http_build_query($p);
 }
 
 // Lấy danh sách cấp tổ chức
@@ -385,6 +399,56 @@ layout('navbar');
                             </div>
                         </article>
                     <?php endforeach; ?>
+
+                    <!-- Pagination -->
+                    <?php if ($total_pages > 1): ?>
+                        <div class="pagination-wrapper mt-4" data-aos="fade-up" data-aos-delay="300">
+                            <nav aria-label="Events pagination">
+                                <ul class="pagination justify-content-center">
+                                    <li class="page-item <?= $cur_page <= 1 ? 'disabled' : '' ?>">
+                                        <a class="page-link"
+                                            href="<?= event_page_url($cur_page - 1, $search, $filter_cap, $filter_time) ?>">
+                                            <i class="bi bi-chevron-left"></i>
+                                        </a>
+                                    </li>
+                                    <?php
+                                    $start_p = max(1, $cur_page - 2);
+                                    $end_p   = min($total_pages, $cur_page + 2);
+                                    if ($start_p > 1): ?>
+                                        <li class="page-item">
+                                            <a class="page-link"
+                                                href="<?= event_page_url(1, $search, $filter_cap, $filter_time) ?>">1</a>
+                                        </li>
+                                        <?php if ($start_p > 2): ?><li class="page-item disabled"><span
+                                                    class="page-link">…</span></li><?php endif; ?>
+                                    <?php endif; ?>
+                                    <?php for ($p = $start_p; $p <= $end_p; $p++): ?>
+                                        <li class="page-item <?= $p == $cur_page ? 'active' : '' ?>">
+                                            <a class="page-link"
+                                                href="<?= event_page_url($p, $search, $filter_cap, $filter_time) ?>"><?= $p ?></a>
+                                        </li>
+                                    <?php endfor; ?>
+                                    <?php if ($end_p < $total_pages): ?>
+                                        <?php if ($end_p < $total_pages - 1): ?><li class="page-item disabled"><span
+                                                    class="page-link">…</span></li><?php endif; ?>
+                                        <li class="page-item">
+                                            <a class="page-link"
+                                                href="<?= event_page_url($total_pages, $search, $filter_cap, $filter_time) ?>"><?= $total_pages ?></a>
+                                        </li>
+                                    <?php endif; ?>
+                                    <li class="page-item <?= $cur_page >= $total_pages ? 'disabled' : '' ?>">
+                                        <a class="page-link"
+                                            href="<?= event_page_url($cur_page + 1, $search, $filter_cap, $filter_time) ?>">
+                                            <i class="bi bi-chevron-right"></i>
+                                        </a>
+                                    </li>
+                                </ul>
+                            </nav>
+                            <p class="text-center text-muted small mt-2">
+                                Trang <?= $cur_page ?> / <?= $total_pages ?> &nbsp;·&nbsp; <?= $total_sk ?> sự kiện
+                            </p>
+                        </div>
+                    <?php endif; ?>
                 </div>
 
                 <!-- Sidebar -->
