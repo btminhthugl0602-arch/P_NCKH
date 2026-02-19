@@ -40,6 +40,45 @@ $sql = "
              tb.tenTieuBan
 ";
 
+// ================== XỬ LÝ TẠO NHÓM ==================
+if (isset($_POST['create_group'])) {
+
+    if (!isset($_SESSION['user_id'])) {
+        die("Bạn cần đăng nhập");
+    }
+
+    $userId = (int)$_SESSION['user_id'];
+
+    $tennhom = mysqli_real_escape_string($conn, $_POST['tennhom']);
+    $mota = mysqli_real_escape_string($conn, $_POST['mota']);
+    $congkhai = (int)$_POST['congkhai'];
+
+    if (!empty($tennhom)) {
+
+        // 1️⃣ Tạo nhóm
+        $sqlInsertNhom = "INSERT INTO nhom (idSK) VALUES ($id)";
+        mysqli_query($conn, $sqlInsertNhom);
+        $idNhom = mysqli_insert_id($conn);
+
+        // 2️⃣ Thông tin nhóm
+        $sqlInfo = "INSERT INTO thongtinnhom 
+                    (idnhom, tennhom, mota, soluongtoida, dangtuyen, congkhai)
+                    VALUES 
+                    ($idNhom, '$tennhom', '$mota', 5, 1, $congkhai)";
+        mysqli_query($conn, $sqlInfo);
+
+        // 3️⃣ Thêm trưởng nhóm
+        $sqlMember = "INSERT INTO thanhviennhom
+                      (idnhom, idtk, trangthai, truongnhom)
+                      VALUES
+                      ($idNhom, $userId, 1, 1)";
+        mysqli_query($conn, $sqlMember);
+
+        // reload trang
+        header("Location: " . $_SERVER['REQUEST_URI']);
+        exit();
+    }
+}
 $result = mysqli_query($conn, $sql);
 $groups = mysqli_fetch_all($result, MYSQLI_ASSOC);
 // Lấy nhóm của user hiện tại
@@ -400,10 +439,11 @@ layout('navbar');
         </div>
 
         <!-- Nút tạo nhóm -->
-        <a href="<?= _HOST_URL ?>?module=event&action=create&idSK=<?= $id ?>" 
-   class="btn btn-primary">
+        <button class="btn btn-primary"
+        data-bs-toggle="modal"
+        data-bs-target="#createGroupModal">
     Tạo nhóm
-</a>
+</button>
     </div>
 
 </div>
@@ -621,6 +661,70 @@ layout('navbar');
     </section><!-- /Course Details Section -->
 
 </main>
+<!-- ================= MODAL TẠO NHÓM ================= -->
+<div class="modal fade" id="createGroupModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+
+            <form method="POST">
+
+                <div class="modal-header">
+                    <h5 class="modal-title">Tạo nhóm mới</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+
+                <div class="modal-body">
+
+                    <div class="mb-3">
+                        <label class="form-label">Tên nhóm</label>
+                        <input type="text" name="tennhom" class="form-control" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Mô tả nhóm</label>
+                        <textarea name="mota" class="form-control" rows="3"></textarea>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Loại nhóm</label>
+
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio"
+                                   name="congkhai" value="1" checked>
+                            <label class="form-check-label">
+                                Công khai
+                            </label>
+                        </div>
+
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio"
+                                   name="congkhai" value="0">
+                            <label class="form-check-label">
+                                Riêng tư
+                            </label>
+                        </div>
+                    </div>
+
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary"
+                            data-bs-dismiss="modal">
+                        Huỷ
+                    </button>
+
+                    <button type="submit"
+                            name="create_group"
+                            class="btn btn-primary">
+                        Tạo nhóm
+                    </button>
+                </div>
+
+            </form>
+
+        </div>
+    </div>
+</div>
 <?php
 layout('footer');
 ?>
