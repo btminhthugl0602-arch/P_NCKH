@@ -149,7 +149,32 @@ function _select_info($conn, $table, $fields = [], $conditions = [])
 
     return $data;
 }
+function _delete_info($conn, $table, $conditions = [])
+{
+    if (empty($conditions)) {
+        error_log("Lỗi _delete_info: Điều kiện xóa rỗng!");
+        return false;
+    }
 
+    $clause = "";
+    foreach ($conditions as $key => $condition) {
+        $operator = $condition[0];
+        if (is_string($condition[1])) {
+            $condition_value = "'" . mysqli_real_escape_string($conn, $condition[1]) . "'";
+        } else {
+            $condition_value = $condition[1];
+        }
+        $logic = $condition[2] ?? '';
+        $clause .= "$key $operator $condition_value $logic ";
+    }
+
+    $sql = "DELETE FROM $table WHERE $clause";
+    if (!mysqli_query($conn, $sql)) {
+        error_log("SQL Error in _delete_info: " . mysqli_error($conn));
+        return false;
+    }
+    return true;
+}
 /**
  * Hàm kiểm tra tồn tại (Sử dụng Prepared Statement)
  */
