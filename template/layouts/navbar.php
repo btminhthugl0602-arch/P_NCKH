@@ -23,8 +23,10 @@ if (!defined('_AUTHEN')) {
                     <li class="dropdown"><a href="#"><span>Quản trị hệ thống</span> <i
                                 class="bi bi-chevron-down toggle-dropdown"></i></a>
                         <ul>
-                            <li><a href="<?php echo _HOST_URL; ?>/?module=users&action=index">Người dùng</a></li>
-                            <li><a href="instructor-profile.html">Instructor Profile</a></li>
+                            <li><a href="<?php echo _HOST_URL; ?>/?module=admin&action=users">Quản lý người dùng</a>
+                            </li>
+                            <li><a href="<?php echo _HOST_URL; ?>/?module=admin&action=permissions">Phân quyền tài
+                                    khoản</a></li>
                             <li><a href="events.html">Events</a></li>
                             <li><a href="blog-details.html">Blog Details</a></li>
                             <li><a href="terms.html">Terms</a></li>
