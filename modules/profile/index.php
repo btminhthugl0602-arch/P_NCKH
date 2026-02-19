@@ -21,7 +21,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['change_password'])) {
     $new_pw  = trim($_POST['new_password'] ?? '');
     $conf_pw = trim($_POST['confirm_password'] ?? '');
 
-    // Lấy mật khẩu hiện tại
     $tk_r = mysqli_query($conn, "SELECT matKhau FROM taikhoan WHERE idTK = $user_id LIMIT 1");
     $tk   = mysqli_fetch_assoc($tk_r);
 
@@ -59,7 +58,7 @@ $sql_tk = "
     WHERE tk.idTK = $user_id
     LIMIT 1
 ";
-$tk_res = mysqli_query($conn, $sql_tk);
+$tk_res  = mysqli_query($conn, $sql_tk);
 $profile = mysqli_fetch_assoc($tk_res);
 
 if (!$profile) {
@@ -77,7 +76,7 @@ $q_res = mysqli_query($conn, "
 $quyens = [];
 while ($r = mysqli_fetch_assoc($q_res)) $quyens[] = $r;
 
-// Lấy sự kiện đã tham gia (qua thanhviennhom)
+// Lấy sự kiện đã tham gia
 $sql_sk = "
     SELECT DISTINCT sk.idSK, sk.tenSK, sk.ngayBatDau, sk.ngayKetThuc, ct.tenCap
     FROM thanhviennhom tvn
@@ -88,8 +87,8 @@ $sql_sk = "
     ORDER BY sk.ngayBatDau DESC
     LIMIT 20
 ";
-$sk_res  = mysqli_query($conn, $sql_sk);
-$my_sks  = [];
+$sk_res = mysqli_query($conn, $sql_sk);
+$my_sks = [];
 if ($sk_res) while ($r = mysqli_fetch_assoc($sk_res)) $my_sks[] = $r;
 
 // Lấy chứng nhận
@@ -103,17 +102,15 @@ $cn_res = mysqli_query($conn, "
 $chungnhans = [];
 if ($cn_res) while ($r = mysqli_fetch_assoc($cn_res)) $chungnhans[] = $r;
 
-// Thống kê
-$so_sk   = count($my_sks);
-$so_cn   = count($chungnhans);
-$so_quyen = count($quyens);
+// Bảng lichsu_dangnhap không tồn tại trong CSDL - bỏ qua
+$login_logs = [];
 
-$data = ['page_title' => 'Trang cá nhân - ' . $profile['tenTK']];
+$data = ['page_title' => 'Thông tin cá nhân - ' . $profile['tenTK']];
 layout('header', $data);
 layout('navbar');
 ?>
 
-<!-- Toast -->
+<!-- Toast thông báo -->
 <?php if (!empty($success_msg)): ?>
     <div class="position-fixed top-0 end-0 p-3" style="z-index:9999">
         <div class="toast show align-items-center text-bg-success border-0">
@@ -140,37 +137,48 @@ layout('navbar');
     <!-- Page Title -->
     <div class="page-title light-background">
         <div class="container d-lg-flex justify-content-between align-items-center">
-            <h1 class="mb-2 mb-lg-0">Trang cá nhân</h1>
+            <h1 class="mb-2 mb-lg-0">Thông tin cá nhân</h1>
             <nav class="breadcrumbs">
                 <ol>
-                    <li><a href="<?php echo _HOST_URL; ?>">Trang chủ</a></li>
-                    <li class="current">Hồ sơ</li>
+                    <li><a href="<?= _HOST_URL ?>">Home</a></li>
+                    <li class="current">Thông tin cá nhân</li>
                 </ol>
             </nav>
         </div>
-    </div>
+    </div><!-- End Page Title -->
 
     <!-- Instructor Profile Section -->
     <section id="instructor-profile" class="instructor-profile section">
+
         <div class="container" data-aos="fade-up" data-aos-delay="100">
+
             <div class="row">
+
                 <div class="col-lg-12">
                     <div class="instructor-hero-banner" data-aos="zoom-out" data-aos-delay="200">
                         <div class="hero-background">
-                            <img src="<?= _HOST_URL_TEMPLATES ?>/assets/img/bg/abstract-bg-3.webp" alt="Background"
+                            <img src="<?= _HOST_URL_TEMPLATES ?>/assets/img/education/showcase-4.webp" alt="Background"
                                 class="img-fluid">
                             <div class="hero-overlay"></div>
                         </div>
                         <div class="hero-content">
                             <div class="instructor-avatar">
-                                <!-- Avatar hiển thị initials -->
-                                <div class="rounded-circle bg-primary d-flex align-items-center justify-content-center text-white fw-bold"
-                                    style="width:120px;height:120px;font-size:2.5rem;border:4px solid #fff">
-                                    <?= mb_strtoupper(mb_substr(!empty($profile['hoTen']) ? $profile['hoTen'] : $profile['tenTK'], 0, 1)) ?>
+                                <?php
+                                $initials = mb_strtoupper(mb_substr(!empty($profile['hoTen']) ? $profile['hoTen'] : $profile['tenTK'], 0, 1));
+                                ?>
+                                <img src="<?= _HOST_URL_TEMPLATES ?>/assets/img/user.jpg"
+                                    alt="<?= htmlspecialchars($profile['hoTen'] ?: $profile['tenTK']) ?>"
+                                    onerror="this.style.display='none'; document.getElementById('avatar-fallback').style.display='flex';">
+                                <div id="avatar-fallback" style="display:none; width:180px; height:180px; border-radius:50%; border:6px solid #fff;
+                                            background: linear-gradient(135deg, #0d6efd, #0a58ca);
+                                            color:#fff; font-size:4rem; font-weight:700;
+                                            align-items:center; justify-content:center;
+                                            box-shadow: 0 20px 40px rgba(0,0,0,0.3);">
+                                    <?= $initials ?>
                                 </div>
                                 <div class="status-badge">
                                     <i class="bi bi-patch-check-fill"></i>
-                                    <span><?= $profile['isActive'] ? 'Active' : 'Locked' ?></span>
+                                    <span><?= $profile['isActive'] ? 'Verified' : 'Locked' ?></span>
                                 </div>
                             </div>
                             <div class="instructor-info">
@@ -191,10 +199,8 @@ layout('navbar');
                                     <?php endif; ?>
                                 </div>
                                 <div class="rating-overview">
-                                    <p class="rating-text">
-                                        <i class="bi bi-calendar3 me-1"></i>
-                                        Ngày tạo: <?= date('d/m/Y', strtotime($profile['ngayTao'])) ?>
-                                    </p>
+                                    <p class="rating-text">Ngày tạo tài khoản:
+                                        <?= date('d/m/Y', strtotime($profile['ngayTao'])) ?></p>
                                 </div>
                                 <div class="contact-actions">
                                     <span class="btn-contact">
@@ -206,65 +212,38 @@ layout('navbar');
                         </div>
                     </div>
                 </div>
+
             </div>
 
-            <!-- Stats Row -->
-            <div class="row my-4">
-                <div class="col-lg-12">
-                    <div class="row text-center g-3">
-                        <div class="col-4">
-                            <div class="card border-0 shadow-sm rounded-4 py-3">
-                                <div class="fw-bold text-primary" style="font-size:1.8rem"><?= $so_sk ?></div>
-                                <div class="text-muted small">Sự kiện tham gia</div>
-                            </div>
-                        </div>
-                        <div class="col-4">
-                            <div class="card border-0 shadow-sm rounded-4 py-3">
-                                <div class="fw-bold text-success" style="font-size:1.8rem"><?= $so_cn ?></div>
-                                <div class="text-muted small">Chứng nhận</div>
-                            </div>
-                        </div>
-                        <div class="col-4">
-                            <div class="card border-0 shadow-sm rounded-4 py-3">
-                                <?php if ($profile['idLoaiTK'] == 3 && !empty($profile['GPA'])): ?>
-                                    <div class="fw-bold text-warning" style="font-size:1.8rem">
-                                        <?= number_format($profile['GPA'], 2) ?></div>
-                                    <div class="text-muted small">GPA</div>
-                                <?php else: ?>
-                                    <div class="fw-bold text-info" style="font-size:1.8rem"><?= $so_quyen ?></div>
-                                    <div class="text-muted small">Quyền hệ thống</div>
-                                <?php endif; ?>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
+            <div class="row gy-5 mt-4">
 
-            <div class="row gy-5">
-
-                <!-- Main Content -->
                 <div class="col-lg-8">
                     <div class="content-tabs" data-aos="fade-right" data-aos-delay="300">
+
                         <ul class="nav nav-tabs custom-tabs" role="tablist">
                             <li class="nav-item" role="presentation">
-                                <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-sukien"
-                                    type="button" role="tab">
-                                    <i class="bi bi-calendar-event"></i> Sự kiện đã tham gia
+                                <button class="nav-link active" data-bs-toggle="tab"
+                                    data-bs-target="#instructor-profile-experience" type="button" role="tab">
+                                    <i class="bi bi-calendar-event"></i>
+                                    Sự kiện đã tham gia
                                 </button>
                             </li>
                             <li class="nav-item" role="presentation">
-                                <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-chungnhan"
-                                    type="button" role="tab">
-                                    <i class="bi bi-award"></i> Chứng nhận
-                                    <?php if ($so_cn > 0): ?><span
-                                            class="badge bg-primary ms-1"><?= $so_cn ?></span><?php endif; ?>
+                                <button class="nav-link" data-bs-toggle="tab"
+                                    data-bs-target="#instructor-profile-courses" type="button" role="tab">
+                                    <i class="bi bi-award"></i>
+                                    Giấy chứng nhận
+                                    <?php if (count($chungnhans) > 0): ?>
+                                        <span class="badge bg-primary ms-1"><?= count($chungnhans) ?></span>
+                                    <?php endif; ?>
                                 </button>
                             </li>
                             <?php if ($profile['idLoaiTK'] == 3 && (!empty($profile['GPA']) || !empty($profile['DRL']))): ?>
                                 <li class="nav-item" role="presentation">
-                                    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-ketqua" type="button"
-                                        role="tab">
-                                        <i class="bi bi-bar-chart"></i> Kết quả học tập
+                                    <button class="nav-link" data-bs-toggle="tab"
+                                        data-bs-target="#instructor-profile-ketqua" type="button" role="tab">
+                                        <i class="bi bi-bar-chart"></i>
+                                        Kết quả học tập
                                     </button>
                                 </li>
                             <?php endif; ?>
@@ -272,8 +251,8 @@ layout('navbar');
 
                         <div class="tab-content custom-tab-content">
 
-                            <!-- Tab: Sự kiện tham gia -->
-                            <div class="tab-pane fade show active" id="tab-sukien" role="tabpanel">
+                            <!-- Tab: Sự kiện đã tham gia -->
+                            <div class="tab-pane fade show active" id="instructor-profile-experience" role="tabpanel">
                                 <?php if (empty($my_sks)): ?>
                                     <div class="text-center py-5 text-muted">
                                         <i class="bi bi-calendar-x fs-2 d-block mb-2"></i>
@@ -328,8 +307,8 @@ layout('navbar');
                                 <?php endif; ?>
                             </div>
 
-                            <!-- Tab: Chứng nhận -->
-                            <div class="tab-pane fade" id="tab-chungnhan" role="tabpanel">
+                            <!-- Tab: Giấy chứng nhận -->
+                            <div class="tab-pane fade" id="instructor-profile-courses" role="tabpanel">
                                 <?php if (empty($chungnhans)): ?>
                                     <div class="text-center py-5 text-muted">
                                         <i class="bi bi-award fs-2 d-block mb-2"></i>
@@ -339,9 +318,9 @@ layout('navbar');
                                     <div class="courses-grid">
                                         <?php foreach ($chungnhans as $cn): ?>
                                             <div class="course-item">
-                                                <div class="course-thumb d-flex align-items-center justify-content-center bg-light rounded-3"
-                                                    style="height:80px">
-                                                    <i class="bi bi-patch-check-fill text-warning" style="font-size:2.5rem"></i>
+                                                <div class="course-thumb">
+                                                    <img src="<?= _HOST_URL_TEMPLATES ?>/assets/img/education/courses-5.webp"
+                                                        alt="Course" class="img-fluid">
                                                 </div>
                                                 <div class="course-info">
                                                     <h5><?= htmlspecialchars($cn['tenSK'] ?? 'Sự kiện') ?></h5>
@@ -354,11 +333,9 @@ layout('navbar');
                                                     </p>
                                                     <?php if (!empty($cn['filePDF'])): ?>
                                                         <a href="<?= htmlspecialchars($cn['filePDF']) ?>" class="price"
-                                                            target="_blank">
-                                                            <i class="bi bi-download me-1"></i>Tải về
-                                                        </a>
+                                                            target="_blank">Tải về</a>
                                                     <?php else: ?>
-                                                        <span class="price text-muted">Chưa có file</span>
+                                                        <p class="price text-muted">Chưa có file</p>
                                                     <?php endif; ?>
                                                 </div>
                                             </div>
@@ -367,9 +344,9 @@ layout('navbar');
                                 <?php endif; ?>
                             </div>
 
-                            <!-- Tab: Kết quả học tập (chỉ SV) -->
+                            <!-- Tab: Kết quả học tập (chỉ sinh viên) -->
                             <?php if ($profile['idLoaiTK'] == 3): ?>
-                                <div class="tab-pane fade" id="tab-ketqua" role="tabpanel">
+                                <div class="tab-pane fade" id="instructor-profile-ketqua" role="tabpanel">
                                     <div class="row g-4 pt-3">
                                         <div class="col-6">
                                             <div class="card border-0 bg-light rounded-4 text-center p-4">
@@ -391,13 +368,16 @@ layout('navbar');
                                         </div>
                                         <div class="col-12">
                                             <div class="card border-0 bg-light rounded-4 p-3">
-                                                <div class="fw-semibold mb-2"><i
-                                                        class="bi bi-building me-2 text-primary"></i>Thông tin học tập</div>
+                                                <div class="fw-semibold mb-2">
+                                                    <i class="bi bi-building me-2 text-primary"></i>Thông tin học tập
+                                                </div>
                                                 <div class="row g-2 text-muted small">
-                                                    <div class="col-6"><i class="bi bi-people me-1"></i>Lớp:
+                                                    <div class="col-6">
+                                                        <i class="bi bi-people me-1"></i>Lớp:
                                                         <strong><?= htmlspecialchars($profile['tenLop'] ?: '—') ?></strong>
                                                     </div>
-                                                    <div class="col-6"><i class="bi bi-building me-1"></i>Khoa:
+                                                    <div class="col-6">
+                                                        <i class="bi bi-building me-1"></i>Khoa:
                                                         <strong><?= htmlspecialchars($profile['tenKhoa'] ?: '—') ?></strong>
                                                     </div>
                                                 </div>
@@ -411,49 +391,64 @@ layout('navbar');
                     </div>
                 </div>
 
-                <!-- Sidebar -->
                 <div class="col-lg-4">
                     <div class="sidebar-widgets" data-aos="fade-left" data-aos-delay="300">
 
-                        <!-- Thông tin tài khoản -->
+                        <!-- Cài đặt -->
                         <div class="stats-widget">
+                            <h4>Cài đặt</h4>
+                            <div class="stats-grid">
+                                <div class="stat-box" style="cursor:pointer" data-bs-toggle="modal"
+                                    data-bs-target="#modalDoiMatKhau">
+                                    <div class="stat-content">
+                                        <h5><i class="bi bi-lock me-2 text-primary"></i>Đổi mật khẩu</h5>
+                                    </div>
+                                </div>
+                                <div class="stat-box">
+                                    <div class="stat-content">
+                                        <h5><i class="bi bi-chat-dots me-2 text-success"></i>Góp ý</h5>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Thông tin tài khoản -->
+                        <div class="achievements-widget mt-3">
                             <h4>Thông tin tài khoản</h4>
-                            <div class="stats-grid" style="grid-template-columns:1fr">
-                                <div class="stat-box">
-                                    <div class="stat-content">
-                                        <div class="text-muted small">Tên đăng nhập</div>
-                                        <h5 class="mb-0">@<?= htmlspecialchars($profile['tenTK']) ?></h5>
+                            <div class="achievement-list">
+                                <div class="achievement-item">
+                                    <div class="achievement-icon"><i class="bi bi-person-badge"></i></div>
+                                    <div class="achievement-text">
+                                        <h6 class="mb-0">@<?= htmlspecialchars($profile['tenTK']) ?></h6>
+                                        <small class="text-muted"><?= htmlspecialchars($profile['tenLoaiTK']) ?></small>
                                     </div>
                                 </div>
-                                <div class="stat-box">
-                                    <div class="stat-content">
-                                        <div class="text-muted small">Vai trò</div>
-                                        <h5 class="mb-0"><?= htmlspecialchars($profile['tenLoaiTK']) ?></h5>
+                                <div class="achievement-item">
+                                    <div class="achievement-icon">
+                                        <i class="bi bi-circle-fill <?= $profile['isActive'] ? 'text-success' : 'text-danger' ?>"
+                                            style="font-size:.6rem"></i>
                                     </div>
-                                </div>
-                                <div class="stat-box">
-                                    <div class="stat-content">
-                                        <div class="text-muted small">Trạng thái</div>
-                                        <h5 class="mb-0 <?= $profile['isActive'] ? 'text-success' : 'text-danger' ?>">
-                                            <i class="bi bi-circle-fill me-1"
-                                                style="font-size:.5rem;vertical-align:middle"></i>
-                                            <?= $profile['isActive'] ? 'Đang hoạt động' : 'Đã bị khóa' ?>
-                                        </h5>
+                                    <div class="achievement-text">
+                                        <h6 class="mb-0"><?= $profile['isActive'] ? 'Đang hoạt động' : 'Đã bị khóa' ?>
+                                        </h6>
+                                        <small class="text-muted">Trạng thái</small>
                                     </div>
                                 </div>
                                 <?php if (!empty($profile['tenLop'])): ?>
-                                    <div class="stat-box">
-                                        <div class="stat-content">
-                                            <div class="text-muted small">Lớp</div>
-                                            <h5 class="mb-0"><?= htmlspecialchars($profile['tenLop']) ?></h5>
+                                    <div class="achievement-item">
+                                        <div class="achievement-icon"><i class="bi bi-people"></i></div>
+                                        <div class="achievement-text">
+                                            <h6 class="mb-0"><?= htmlspecialchars($profile['tenLop']) ?></h6>
+                                            <small class="text-muted">Lớp</small>
                                         </div>
                                     </div>
                                 <?php endif; ?>
                                 <?php if (!empty($profile['tenKhoa'])): ?>
-                                    <div class="stat-box">
-                                        <div class="stat-content">
-                                            <div class="text-muted small">Khoa</div>
-                                            <h5 class="mb-0"><?= htmlspecialchars($profile['tenKhoa']) ?></h5>
+                                    <div class="achievement-item">
+                                        <div class="achievement-icon"><i class="bi bi-building"></i></div>
+                                        <div class="achievement-text">
+                                            <h6 class="mb-0"><?= htmlspecialchars($profile['tenKhoa']) ?></h6>
+                                            <small class="text-muted">Khoa</small>
                                         </div>
                                     </div>
                                 <?php endif; ?>
@@ -462,14 +457,12 @@ layout('navbar');
 
                         <!-- Quyền hệ thống -->
                         <?php if (!empty($quyens)): ?>
-                            <div class="achievements-widget mt-4">
+                            <div class="achievements-widget mt-3">
                                 <h4>Quyền hệ thống</h4>
                                 <div class="achievement-list">
                                     <?php foreach ($quyens as $q): ?>
                                         <div class="achievement-item">
-                                            <div class="achievement-icon">
-                                                <i class="bi bi-shield-check"></i>
-                                            </div>
+                                            <div class="achievement-icon"><i class="bi bi-shield-check"></i></div>
                                             <div class="achievement-text">
                                                 <h6 class="mb-0"><?= htmlspecialchars($q['tenQuyen']) ?></h6>
                                                 <small class="text-muted"><?= htmlspecialchars($q['maQuyen']) ?></small>
@@ -480,53 +473,89 @@ layout('navbar');
                             </div>
                         <?php endif; ?>
 
-                        <!-- Đổi mật khẩu -->
-                        <div class="stats-widget mt-4">
-                            <h4>Đổi mật khẩu</h4>
-                            <form method="POST" action="">
-                                <div class="mb-3">
-                                    <label class="form-label small fw-semibold">Mật khẩu cũ</label>
-                                    <div class="input-group input-group-sm">
-                                        <input type="password" class="form-control" name="old_password" id="old_pw"
-                                            required>
-                                        <button type="button" class="btn btn-outline-secondary"
-                                            onclick="togglePwd('old_pw',this)"><i class="bi bi-eye"></i></button>
+                        <!-- Thông tin đăng nhập -->
+                        <div class="achievements-widget mt-3">
+                            <h4>Thông tin đăng nhập</h4>
+                            <div class="achievement-list">
+                                <?php if (!empty($login_logs)): ?>
+                                    <?php foreach ($login_logs as $log): ?>
+                                        <div class="achievement-item">
+                                            <div class="achievement-text">
+                                                <h6>Đăng nhập ngày <?= date('d/m/Y', strtotime($log['ngayDangNhap'])) ?></h6>
+                                            </div>
+                                        </div>
+                                    <?php endforeach; ?>
+                                <?php else: ?>
+                                    <div class="achievement-item">
+                                        <div class="achievement-text">
+                                            <h6 class="text-muted">Chưa có lịch sử</h6>
+                                        </div>
                                     </div>
-                                </div>
-                                <div class="mb-3">
-                                    <label class="form-label small fw-semibold">Mật khẩu mới</label>
-                                    <div class="input-group input-group-sm">
-                                        <input type="password" class="form-control" name="new_password" id="new_pw"
-                                            required>
-                                        <button type="button" class="btn btn-outline-secondary"
-                                            onclick="togglePwd('new_pw',this)"><i class="bi bi-eye"></i></button>
-                                    </div>
-                                </div>
-                                <div class="mb-3">
-                                    <label class="form-label small fw-semibold">Xác nhận mật khẩu mới</label>
-                                    <div class="input-group input-group-sm">
-                                        <input type="password" class="form-control" name="confirm_password" id="conf_pw"
-                                            required>
-                                        <button type="button" class="btn btn-outline-secondary"
-                                            onclick="togglePwd('conf_pw',this)"><i class="bi bi-eye"></i></button>
-                                    </div>
-                                </div>
-                                <button type="submit" name="change_password" class="btn btn-primary w-100 btn-sm">
-                                    <i class="bi bi-lock me-1"></i> Đổi mật khẩu
-                                </button>
-                            </form>
+                                <?php endif; ?>
+                            </div>
                         </div>
 
                     </div>
                 </div>
 
             </div>
+
         </div>
-    </section>
+
+    </section><!-- /Instructor Profile Section -->
 
 </main>
 
-<?php layout('footer'); ?>
+<!-- Modal Đổi mật khẩu -->
+<div class="modal fade" id="modalDoiMatKhau" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-lock me-2"></i>Đổi mật khẩu</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" action="">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Mật khẩu cũ</label>
+                        <div class="input-group">
+                            <input type="password" class="form-control" name="old_password" id="old_pw" required>
+                            <button type="button" class="btn btn-outline-secondary" onclick="togglePwd('old_pw',this)">
+                                <i class="bi bi-eye"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Mật khẩu mới</label>
+                        <div class="input-group">
+                            <input type="password" class="form-control" name="new_password" id="new_pw" required>
+                            <button type="button" class="btn btn-outline-secondary" onclick="togglePwd('new_pw',this)">
+                                <i class="bi bi-eye"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Xác nhận mật khẩu mới</label>
+                        <div class="input-group">
+                            <input type="password" class="form-control" name="confirm_password" id="conf_pw" required>
+                            <button type="button" class="btn btn-outline-secondary" onclick="togglePwd('conf_pw',this)">
+                                <i class="bi bi-eye"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Hủy</button>
+                    <button type="submit" name="change_password" class="btn btn-primary">
+                        <i class="bi bi-lock me-1"></i>Đổi mật khẩu
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<?php layout('footer') ?>
 
 <script>
     function togglePwd(id, btn) {
@@ -537,5 +566,8 @@ layout('navbar');
     }
     document.addEventListener('DOMContentLoaded', function() {
         document.querySelectorAll('.toast.show').forEach(t => setTimeout(() => t.classList.remove('show'), 4000));
+        <?php if (!empty($error_msg)): ?>
+            new bootstrap.Modal(document.getElementById('modalDoiMatKhau')).show();
+        <?php endif; ?>
     });
 </script>
