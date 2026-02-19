@@ -52,8 +52,8 @@ layout('navbar');
                         <tr>
                             <th>ID</th>
                             <th>Tên</th>
-                            <th>Đơn vị</th>
-                            <th>Số sự kiện</th>
+                            <th>Khoa</th>
+                            <th>Số sự kiện tham gia</th>
                             <th>Vai trò</th>
                             <th>Hành động</th>
                         </tr>
@@ -68,7 +68,7 @@ layout('navbar');
                             <td>Giảng viên</td>
                             <td>
                                 <a href="instructor-profile.html" class="btn btn-sm btn-outline-primary">
-                                    <i class="bi bi-eye"></i> View Profile
+                                    <i class="bi bi-eye"></i> Chỉnh sửa
                                 </a>
                             </td>
                         </tr>
@@ -81,7 +81,7 @@ layout('navbar');
                             <td>Giảng viên</td>
                             <td>
                                 <a href="instructor-profile.html" class="btn btn-sm btn-outline-primary">
-                                    <i class="bi bi-eye"></i> View Profile
+                                    <i class="bi bi-eye"></i> Chỉnh sửa
                                 </a>
                             </td>
                         </tr>
@@ -94,7 +94,7 @@ layout('navbar');
                             <td>Sinh viên</td>
                             <td>
                                 <a href="instructor-profile.html" class="btn btn-sm btn-outline-primary">
-                                    <i class="bi bi-eye"></i> View Profile
+                                    <i class="bi bi-eye"></i> Chỉnh sửa
                                 </a>
                             </td>
                         </tr>
@@ -107,7 +107,7 @@ layout('navbar');
                             <td>Giảng viên</td>
                             <td>
                                 <a href="instructor-profile.html" class="btn btn-sm btn-outline-primary">
-                                    <i class="bi bi-eye"></i> View Profile
+                                    <i class="bi bi-eye"></i> Chỉnh sửa
                                 </a>
                             </td>
                         </tr>
