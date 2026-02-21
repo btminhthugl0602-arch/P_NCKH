@@ -7,7 +7,7 @@ function kiem_tra_sv_co_nhom($conn, $id_tk, $id_sk) {
     $sql = "SELECT tv.idtk 
             FROM thanhviennhom tv 
             JOIN nhom n ON tv.idnhom = n.idnhom 
-            WHERE tv.idtk = ? AND n.idSK = ? AND tv.isActive = 1"; 
+            WHERE tv.idtk = ? AND n.idSK = ? AND tv.trangthai = 1"; 
     
     $stmt = mysqli_prepare($conn, $sql);
     mysqli_stmt_bind_param($stmt, "ii", $id_tk, $id_sk);
@@ -61,8 +61,8 @@ function tao_nhom_moi($conn, $id_nhom_truong, $id_sk, $ten_nhom, $mo_ta, $so_luo
 
         // Thêm Trưởng nhóm (Vai trò 1)
         $res_mem = _insert_info($conn, 'thanhviennhom',
-            ['idnhom', 'idtk', 'idvaitronhom', 'trangthai', 'ngaythamgia', 'isActive'],
-            [$id_nhom, $id_nhom_truong, 1, 1, date('Y-m-d H:i:s'), 1]
+            ['idnhom', 'idtk', 'idvaitronhom', 'trangthai', 'ngaythamgia'],
+            [$id_nhom, $id_nhom_truong, 1, 1, date('Y-m-d H:i:s')]
         );
         if (!$res_mem) throw new Exception('Lỗi thêm trưởng nhóm');
 
@@ -79,8 +79,9 @@ function tao_nhom_moi($conn, $id_nhom_truong, $id_sk, $ten_nhom, $mo_ta, $so_luo
  * 2. GỬI YÊU CẦU / MỜI THÀNH VIÊN / ĐĂNG KÝ GVHD
  */
 function gui_yeu_cau_nhom($conn, $id_nhom, $id_tk_doi_phuong, $chieu_moi, $loi_nhan = '') {
+    // Kiểm tra đã là thành viên chưa (bảng thanhviennhom dùng cột trangthai, không có isActive)
     $kt_thanhvien = _select_info($conn, 'thanhviennhom', [], [
-        'WHERE' => ['idnhom', '=', $id_nhom, 'AND', 'idtk', '=', $id_tk_doi_phuong, 'AND', 'isActive', '=', 1, '']
+        'WHERE' => ['idnhom', '=', $id_nhom, 'AND', 'idtk', '=', $id_tk_doi_phuong, 'AND', 'trangthai', '=', 1, '']
     ]);
     if (!empty($kt_thanhvien)) return ['status' => false, 'message' => 'Người này đã là thành viên của nhóm'];
 
@@ -94,7 +95,7 @@ function gui_yeu_cau_nhom($conn, $id_nhom, $id_tk_doi_phuong, $chieu_moi, $loi_n
     // Nếu mời GV (idLoaiTK=2) -> Check xem nhóm đã có GVHD chưa
     if ($chieu_moi == 0 && $doi_phuong['idLoaiTK'] == 2) {
         $kt_gv = _select_info($conn, 'thanhviennhom', [], [
-            'WHERE' => ['idnhom', '=', $id_nhom, 'AND', 'idvaitronhom', '=', 3, 'AND', 'isActive', '=', 1, '']
+            'WHERE' => ['idnhom', '=', $id_nhom, 'AND', 'idvaitronhom', '=', 3, 'AND', 'trangthai', '=', 1, '']
         ]);
         if (!empty($kt_gv)) return ['status' => false, 'message' => 'Nhóm đã có Giảng viên hướng dẫn rồi'];
     }
@@ -149,8 +150,8 @@ function duyet_yeu_cau_nhom($conn, $id_nguoi_duyet, $id_yeu_cau, $trang_thai_moi
             $vai_tro = ($user_join['idLoaiTK'] == 2) ? 3 : 2; // GV -> Mentor (3), SV -> Member (2)
 
             $res_add = _insert_info($conn, 'thanhviennhom',
-                ['idnhom', 'idtk', 'idvaitronhom', 'trangthai', 'ngaythamgia', 'isActive'],
-                [$yc['idNhom'], $yc['idTK'], $vai_tro, 1, date('Y-m-d H:i:s'), 1]
+                ['idnhom', 'idtk', 'idvaitronhom', 'trangthai', 'ngaythamgia'],
+                [$yc['idNhom'], $yc['idTK'], $vai_tro, 1, date('Y-m-d H:i:s')]
             );
             if (!$res_add) throw new Exception('Lỗi thêm thành viên');
         }
@@ -176,7 +177,7 @@ function roi_nhom($conn, $id_nguoi_thuc_hien, $id_nhom, $id_tk_bi_xoa) {
     }
 
     $conditions_select = [
-        'WHERE' => ['idnhom', '=', $id_nhom, 'AND', 'idtk', '=', $id_tk_bi_xoa, 'AND', 'isActive', '=', 1, '']
+        'WHERE' => ['idnhom', '=', $id_nhom, 'AND', 'idtk', '=', $id_tk_bi_xoa, 'AND', 'trangthai', '=', 1, '']
     ];
     $tv = _select_info($conn, 'thanhviennhom', [], $conditions_select);
     
@@ -188,7 +189,8 @@ function roi_nhom($conn, $id_nguoi_thuc_hien, $id_nhom, $id_tk_bi_xoa) {
         'idnhom' => ['=', $id_nhom, 'AND'],
         'idtk'   => ['=', $id_tk_bi_xoa, '']
     ];
-    $result = _update_info($conn, 'thanhviennhom', ['isActive'], [0], $conditions_update);
+    // Đặt trangthai = 0 để đánh dấu đã rời nhóm (không có cột isActive trong bảng này)
+    $result = _update_info($conn, 'thanhviennhom', ['trangthai'], [0], $conditions_update);
     
     return $result ? ['status' => true, 'message' => 'Đã rời khỏi nhóm'] : ['status' => false, 'message' => 'Lỗi hệ thống'];
 }
