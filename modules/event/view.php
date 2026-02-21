@@ -4,6 +4,7 @@ if (!defined('_AUTHEN')) {
 }
 
 require_once _PATH_URL . '/modules/functions/quan_ly_su_kien.php';
+require_once _PATH_URL . '/modules/functions/base.php';
 
 $id_su_kien = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 $event = btc_lay_chi_tiet_su_kien($conn, $id_su_kien);
@@ -13,12 +14,70 @@ if (!$event) {
     exit;
 }
 
+// ==========================================
+// KIỂM TRA QUYỀN (ROLE-BASED ACCESS CONTROL)
+// ==========================================
+$user_id = $_SESSION['user_id'] ?? 0; 
+
+$is_btc = kiem_tra_quyen_he_thong($conn, $user_id, 'event.manage');
+
+// Lấy idGV thực tế từ idTK
+$id_gv_logged = 0;
+$res_gv = mysqli_query($conn, "SELECT idGV FROM giangvien WHERE idTK = $user_id LIMIT 1");
+if ($res_gv && mysqli_num_rows($res_gv) > 0) {
+    $id_gv_logged = mysqli_fetch_assoc($res_gv)['idGV'];
+}
+
+$is_giangvien = false;
+$my_subcommittees = []; // Danh sách tiểu ban mà GV này tham gia
+
+if ($id_gv_logged > 0) {
+    // 1. Kiểm tra xem có được phân công chấm ở Sự kiện này không
+    $sql_check_pc = "
+        SELECT 1 FROM phancong_doclap pcd JOIN vongthi v ON pcd.idVongThi = v.idVongThi WHERE pcd.idGV = $id_gv_logged AND v.idSK = $id_su_kien
+        UNION
+        SELECT 1 FROM tieuban_giangvien tbg JOIN tieuban tb ON tbg.idTieuBan = tb.idTieuBan WHERE tbg.idGV = $id_gv_logged AND tb.idSK = $id_su_kien
+    ";
+    $res_check = mysqli_query($conn, $sql_check_pc);
+    if ($res_check && mysqli_num_rows($res_check) > 0) {
+        $is_giangvien = true;
+    }
+
+    // 2. Lấy thông tin các tiểu ban mà GV này tham gia trong sự kiện này
+    $sql_my_tb = "
+        SELECT tb.*, v.tenVongThi 
+        FROM tieuban tb 
+        JOIN tieuban_giangvien tbg ON tb.idTieuBan = tbg.idTieuBan 
+        JOIN vongthi v ON tb.idVongThi = v.idVongThi
+        WHERE tbg.idGV = $id_gv_logged AND tb.idSK = $id_su_kien
+    ";
+    $res_my_tb = mysqli_query($conn, $sql_my_tb);
+    if ($res_my_tb) {
+        while ($row = mysqli_fetch_assoc($res_my_tb)) {
+            $tb_id = $row['idTieuBan'];
+            // Lấy danh sách thành viên Hội đồng cùng tiểu ban
+            $sql_members = "SELECT gv.tenGV FROM giangvien gv JOIN tieuban_giangvien tbg ON gv.idGV = tbg.idGV WHERE tbg.idTieuBan = $tb_id";
+            $row['members'] = mysqli_fetch_all(mysqli_query($conn, $sql_members), MYSQLI_ASSOC);
+            
+            // Lấy danh sách sản phẩm/bài thi trong tiểu ban
+            $sql_prods = "SELECT sp.tensanpham, n.manhom, ttn.tennhom 
+                          FROM sanpham sp 
+                          JOIN tieuban_sanpham tbs ON sp.idSanPham = tbs.idSanPham 
+                          LEFT JOIN nhom n ON sp.idNhom = n.idnhom
+                          LEFT JOIN thongtinnhom ttn ON n.idnhom = ttn.idnhom
+                          WHERE tbs.idTieuBan = $tb_id";
+            $row['products'] = mysqli_fetch_all(mysqli_query($conn, $sql_prods), MYSQLI_ASSOC);
+            
+            $my_subcommittees[] = $row;
+        }
+    }
+}
+
 layout('header');
 layout('navbar');
 ?>
 <main class="main">
 
-    <!-- Page Title -->
     <div class="page-title light-background">
         <div class="container d-lg-flex justify-content-between align-items-center">
             <h1 class="mb-2 mb-lg-0"><?= htmlspecialchars($event['tenSK']) ?></h1>
@@ -29,17 +88,13 @@ layout('navbar');
                 </ol>
             </nav>
         </div>
-    </div><!-- End Page Title -->
+    </div>
 
-    <!-- Course Details Section -->
     <section id="course-details" class="course-details section">
-
         <div class="container" data-aos="fade-up" data-aos-delay="100">
-
             <div class="row">
                 <div class="col-lg-8">
 
-                    <!-- Course Hero -->
                     <div class="course-hero" data-aos="fade-up" data-aos-delay="200">
                         <div class="hero-content">
                             <div class="course-badge">
@@ -69,599 +124,194 @@ layout('navbar');
                         <div class="hero-image">
                             <img src="<?php echo _HOST_URL_TEMPLATES ?>/assets/img/education/courses-8.webp"
                                 alt="Course Preview" class="img-fluid">
-                            <div class="play-overlay">
-                                <button class="play-btn">
-                                    <i class="bi bi-play-fill"></i>
-                                </button>
-                                <span>Ảnh sự kiện </span>
-                            </div>
                         </div>
-                    </div><!-- End Course Hero -->
+                    </div>
 
-                    <!-- Điều hướng sự kiện -->
                     <div class="course-nav-tabs" data-aos="fade-up" data-aos-delay="300">
                         <ul class="nav nav-tabs" id="EventDetails" role="tablist">
                             <li class="nav-item">
                                 <button class="nav-link active" id="event-info-tab" data-bs-toggle="tab"
                                     data-bs-target="#event-info" type="button" role="tab">
-                                    <i class="bi bi-layout-text-window-reverse"></i>
-                                    Thông tin
+                                    <i class="bi bi-layout-text-window-reverse"></i> Thông tin
                                 </button>
                             </li>
                             <li class="nav-item">
                                 <button class="nav-link" id="event-groups-tab" data-bs-toggle="tab"
                                     data-bs-target="#event-groups" type="button" role="tab">
-                                    <i class="bi bi-list-ul"></i>
-                                    Nhóm thi
+                                    <i class="bi bi-list-ul"></i> Nhóm thi
                                 </button>
                             </li>
+                            
+                            <?php if ($is_btc): ?>
                             <li class="nav-item">
-                                <button class="nav-link" id="event-config-tab" data-bs-toggle="tab"
+                                <button class="nav-link fw-bold text-primary" id="event-config-tab" data-bs-toggle="tab"
                                     data-bs-target="#event-config" type="button" role="tab">
-                                    <i class="bi bi-star"></i>
-                                    Cấu hình sự kiện
+                                    <i class="bi bi-gear-fill"></i> Cấu hình sự kiện
                                 </button>
                             </li>
+                            <?php endif; ?>
+
+                            <?php if ($is_btc || $is_giangvien): ?>
+                            <li class="nav-item">
+                                <button class="nav-link fw-bold text-success" id="event-grading-tab" data-bs-toggle="tab"
+                                    data-bs-target="#event-grading" type="button" role="tab">
+                                    <i class="bi bi-briefcase-fill"></i> Khu vực Giám khảo
+                                </button>
+                            </li>
+                            <?php endif; ?>
                         </ul>
 
                         <div class="tab-content" id="EventDetailsContent">
 
-                            <!-- Thông tin Tab -->
                             <div class="tab-pane fade show active" id="event-info" role="tabpanel">
-
                                 <div class="overview-section">
                                     <h3>Chi tiết sự kiện</h3>
                                     <p><?= nl2br(htmlspecialchars($event['moTa'])) ?></p>
                                 </div>
+                            </div>
 
-                                <div class="skills-grid">
-                                    <h3>Skills You'll Gain</h3>
-                                    <div class="row">
-                                        <div class="col-md-6">
-                                            <div class="skill-item">
-                                                <div class="skill-icon">
-                                                    <i class="bi bi-code-slash"></i>
-                                                </div>
-                                                <div class="skill-content">
-                                                    <h5>Frontend Development</h5>
-                                                    <p>React, JavaScript ES6+, HTML5 &amp; CSS3</p>
-                                                </div>
-                                            </div>
+                            <div class="tab-pane fade" id="event-groups" role="tabpanel">
+                                <div class="alert alert-info mt-3">Khu vực hiển thị danh sách các nhóm đang tham gia sự kiện.</div>
+                            </div>
+
+                            <?php if ($is_btc): ?>
+                            <div class="tab-pane fade" id="event-config" role="tabpanel">
+                                <div class="event-config-content mt-4">
+                                    <h3 class="fw-bold text-primary"><i class="bi bi-gear me-2"></i>Bảng điều khiển Sự kiện</h3>
+                                    <div class="d-flex flex-column gap-3 mt-4">
+                                        <div class="row g-2">
+                                            <div class="col-md-4"><a class="btn btn-outline-primary w-100 py-3 fw-bold" href="?module=event&action=config_rounds&id=<?=$id_su_kien?>"><i class="bi bi-layers d-block fs-3 mb-1"></i> Cấu hình cơ bản</a></div>
+                                            <div class="col-md-4"><a class="btn btn-outline-primary w-100 py-3 fw-bold" href="?module=event&action=config_rules&id=<?=$id_su_kien?>"><i class="bi bi-file-earmark-ruled d-block fs-3 mb-1"></i> Quy chế</a></div>
+                                            <div class="col-md-4"><a class="btn btn-outline-primary w-100 py-3 fw-bold" href="?module=event&action=config_criteria&id=<?=$id_su_kien?>"><i class="bi bi-ui-checks d-block fs-3 mb-1"></i> Bộ tiêu chí</a></div>
                                         </div>
-                                        <div class="col-md-6">
-                                            <div class="skill-item">
-                                                <div class="skill-icon">
-                                                    <i class="bi bi-server"></i>
-                                                </div>
-                                                <div class="skill-content">
-                                                    <h5>Backend Development</h5>
-                                                    <p>Node.js, Express.js, RESTful APIs</p>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div class="col-md-6">
-                                            <div class="skill-item">
-                                                <div class="skill-icon">
-                                                    <i class="bi bi-database"></i>
-                                                </div>
-                                                <div class="skill-content">
-                                                    <h5>Database Management</h5>
-                                                    <p>MongoDB, Mongoose, Data Modeling</p>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div class="col-md-6">
-                                            <div class="skill-item">
-                                                <div class="skill-icon">
-                                                    <i class="bi bi-shield-check"></i>
-                                                </div>
-                                                <div class="skill-content">
-                                                    <h5>Security &amp; Testing</h5>
-                                                    <p>Authentication, JWT, Unit Testing</p>
-                                                </div>
+                                        <div class="card border-0 shadow-sm bg-light mt-2">
+                                            <div class="card-body">
+                                                <h6 class="fw-bold text-dark mb-3 text-uppercase">Nghiệp vụ chấm thi & Đánh giá</h6>
+                                                <a class="btn btn-success text-white w-100 text-start p-3 mb-2 rounded-3 shadow-sm" href="?module=event&action=config_grading&id=<?=$id_su_kien?>">
+                                                    <i class="bi bi-pencil-square fs-4 me-2 align-middle"></i> <strong>1. Phân công & Quản lý Điểm (Sơ loại)</strong>
+                                                </a>
+                                                <a class="btn btn-warning text-dark w-100 text-start p-3 rounded-3 shadow-sm" href="?module=event&action=config_subcommittee&id=<?=$id_su_kien?>">
+                                                    <i class="bi bi-diagram-3 fs-4 me-2 align-middle"></i> <strong>2. Quản lý Tiểu ban (Bảo vệ Vòng trong)</strong>
+                                                </a>
                                             </div>
                                         </div>
                                     </div>
                                 </div>
+                            </div>
+                            <?php endif; ?>
 
-                                <div class="requirements-section">
-                                    <h3>Requirements</h3>
-                                    <ul class="requirements-list">
-                                        <li><i class="bi bi-check2"></i>Basic understanding of HTML and CSS</li>
-                                        <li><i class="bi bi-check2"></i>Familiarity with JavaScript fundamentals</li>
-                                        <li><i class="bi bi-check2"></i>Computer with internet connection</li>
-                                        <li><i class="bi bi-check2"></i>Text editor or IDE installed</li>
-                                    </ul>
-                                </div>
-
-                            </div><!-- End Thông tin Tab -->
-
-                            <!-- Nhóm Tab -->
-                            <div class="tab-pane fade" id="event-groups" role="tabpanel">
-
-                                <div class="course-nav-tabs" data-aos="fade-up" data-aos-delay="300">
-                                    <ul class="nav nav-tabs" id="course-detailsCourseTab" role="tablist">
-                                        <li class="nav-item">
-                                            <button class="nav-link active" id="all-groups-tab" data-bs-toggle="tab"
-                                                data-bs-target="#all-groups" type="button" role="tab">
-                                                <i class="bi bi-layout-text-window-reverse"></i>
-                                                Tất cả
-                                            </button>
-                                        </li>
-                                        <li class="nav-item">
-                                            <button class="nav-link" id="my-groups-tab" data-bs-toggle="tab"
-                                                data-bs-target="#my-groups" type="button" role="tab">
-                                                <i class="bi bi-list-ul"></i>
-                                                Nhóm của tôi
-                                            </button>
-                                        </li>
-                                    </ul>
-
-                                    <div class="tab-content" id="course-detailsCourseTabContent">
-
-                                        <!-- Tất cả nhóm Tab -->
-                                        <div class="tab-pane fade show active" id="all-groups" role="tabpanel">
-
-                                            <!-- Courses 2 Section -->
-                                            <section id="courses-2" class="courses-2 section">
-
-                                                <div class="container" data-aos="fade-up" data-aos-delay="100">
-
-                                                    <div class="row">
-                                                        <div class="col-lg-12">
-                                                            <div class="courses-header" data-aos="fade-left"
-                                                                data-aos-delay="100">
-                                                                <div class="search-box">
-                                                                    <i class="bi bi-search"></i>
-                                                                    <input type="text" placeholder="Tìm kiếm nhóm...">
-                                                                </div>
-                                                                <div class="sort-dropdown">
-                                                                    <select>
-                                                                        <option>Sắp xếp theo: Tất cả</option>
-                                                                        <option>Nhóm của tôi</option>
-                                                                        <option>Thành viên: Ít tới nhiều</option>
-                                                                        <option>Thành viên: Nhiều tới ít</option>
-                                                                    </select>
-                                                                </div>
-                                                            </div>
-
-                                                            <div class="courses-grid" data-aos="fade-up"
-                                                                data-aos-delay="200">
-                                                                <div class="row">
-                                                                    <div class="col-lg-6 col-md-6">
-                                                                        <div class="course-card">
-                                                                            <div class="course-image">
-                                                                                <img src="<?php echo _HOST_URL_TEMPLATES ?>/assets/img/education/courses-3.webp"
-                                                                                    alt="Course" class="img-fluid">
-                                                                                <div class="course-badge">Đã đủ thành
-                                                                                    viên
-                                                                                </div>
-                                                                                <div class="course-price">5/5</div>
-                                                                            </div>
-                                                                            <div class="course-content">
-                                                                                <div class="course-meta">
-                                                                                    <span
-                                                                                        class="category">Programming</span>
-                                                                                    <span
-                                                                                        class="level">Intermediate</span>
-                                                                                </div>
-                                                                                <h3>Tên nhóm</h3>
-                                                                                <p>Mô tả nhóm</p>
-                                                                                <div class="course-stats">
-                                                                                    <div class="stat">
-                                                                                        <i class="bi bi-clock"></i>
-                                                                                        <span>15 hours</span>
-                                                                                    </div>
-                                                                                    <div class="stat">
-                                                                                        <i class="bi bi-people"></i>
-                                                                                        <span>1,245 students</span>
-                                                                                    </div>
-                                                                                    <div class="rating">
-                                                                                        <i class="bi bi-star-fill"></i>
-                                                                                        <i class="bi bi-star-fill"></i>
-                                                                                        <i class="bi bi-star-fill"></i>
-                                                                                        <i class="bi bi-star-fill"></i>
-                                                                                        <i class="bi bi-star-fill"></i>
-                                                                                        <span>5 (89 reviews)</span>
-                                                                                    </div>
-                                                                                </div>
-                                                                                <div class="instructor-info">
-                                                                                    <img src="<?php echo _HOST_URL_TEMPLATES ?>/assets/img/person/person-m-3.webp"
-                                                                                        alt="Instructor"
-                                                                                        class="instructor-avatar">
-                                                                                    <span class="instructor-name">Giảng
-                                                                                        viên hướng dẫn / Nhóm
-                                                                                        trưởng</span>
-                                                                                </div>
-                                                                                <a href="enroll.html"
-                                                                                    class="btn-course">Xin vào / Đã
-                                                                                    đủ</a>
-                                                                            </div>
-                                                                        </div><!-- End Course Card -->
-                                                                    </div>
-
-                                                                    <div class="col-lg-6 col-md-6">
-                                                                        <div class="course-card">
-                                                                            <div class="course-image">
-                                                                                <img src="<?php echo _HOST_URL_TEMPLATES ?>/assets/img/education/courses-7.webp"
-                                                                                    alt="Course" class="img-fluid">
-                                                                                <div class="course-badge badge-free">
-                                                                                    Free</div>
-                                                                            </div>
-                                                                            <div class="course-content">
-                                                                                <div class="course-meta">
-                                                                                    <span class="category">Design</span>
-                                                                                    <span class="level">Beginner</span>
-                                                                                </div>
-                                                                                <h3>UI/UX Design Fundamentals</h3>
-                                                                                <p>Mauris blandit aliquet elit, eget
-                                                                                    tincidunt nibh pulvinar a.
-                                                                                    Vestibulum ac diam sit amet quam
-                                                                                    vehicula elementum sed sit amet.</p>
-                                                                                <div class="course-stats">
-                                                                                    <div class="stat">
-                                                                                        <i class="bi bi-clock"></i>
-                                                                                        <span>8 hours</span>
-                                                                                    </div>
-                                                                                    <div class="stat">
-                                                                                        <i class="bi bi-people"></i>
-                                                                                        <span>2,891 students</span>
-                                                                                    </div>
-                                                                                    <div class="rating">
-                                                                                        <i class="bi bi-star-fill"></i>
-                                                                                        <i class="bi bi-star-fill"></i>
-                                                                                        <i class="bi bi-star-fill"></i>
-                                                                                        <i class="bi bi-star-fill"></i>
-                                                                                        <i class="bi bi-star"></i>
-                                                                                        <span>4.6 (156 reviews)</span>
-                                                                                    </div>
-                                                                                </div>
-                                                                                <div class="instructor-info">
-                                                                                    <img src="<?php echo _HOST_URL_TEMPLATES ?>/assets/img/person/person-f-7.webp"
-                                                                                        alt="Instructor"
-                                                                                        class="instructor-avatar">
-                                                                                    <span class="instructor-name">Sarah
-                                                                                        Johnson</span>
-                                                                                </div>
-                                                                                <a href="enroll.html"
-                                                                                    class="btn-course">Start Free
-                                                                                    Course</a>
-                                                                            </div>
-                                                                        </div><!-- End Course Card -->
-                                                                    </div>
-
-                                                                </div>
-                                                            </div><!-- End Courses Grid -->
-
-                                                            <div class="pagination-wrapper" data-aos="fade-up"
-                                                                data-aos-delay="300">
-                                                                <nav aria-label="Courses pagination">
-                                                                    <ul class="pagination justify-content-center">
-                                                                        <li class="page-item disabled">
-                                                                            <a class="page-link" href="#" tabindex="-1"
-                                                                                aria-disabled="true">
-                                                                                <i class="bi bi-chevron-left"></i>
-                                                                            </a>
-                                                                        </li>
-                                                                        <li class="page-item active">
-                                                                            <a class="page-link" href="#">1</a>
-                                                                        </li>
-                                                                        <li class="page-item">
-                                                                            <a class="page-link" href="#">2</a>
-                                                                        </li>
-                                                                        <li class="page-item">
-                                                                            <a class="page-link" href="#">3</a>
-                                                                        </li>
-                                                                        <li class="page-item">
-                                                                            <a class="page-link" href="#">
-                                                                                <i class="bi bi-chevron-right"></i>
-                                                                            </a>
-                                                                        </li>
-                                                                    </ul>
-                                                                </nav>
-                                                            </div><!-- End Pagination -->
-
-                                                        </div>
-                                                    </div>
-
-                                                </div>
-
-                                            </section><!-- /Courses 2 Section -->
-
-                                        </div><!-- End Tất cả nhóm Tab -->
-
-                                        <!-- Nhóm của tôi Tab -->
-                                        <div class="tab-pane fade" id="my-groups" role="tabpanel">
-
-                                            <section id="courses-2" class="courses-2 section">
-
-                                                <div class="container" data-aos="fade-up" data-aos-delay="100">
-
-                                                    <div class="row">
-                                                        <div class="col-lg-12">
-                                                            <div class="courses-header" data-aos="fade-left"
-                                                                data-aos-delay="100">
-                                                                <div class="search-box">
-                                                                    <i class="bi bi-search"></i>
-                                                                    <input type="text" placeholder="Tìm kiếm nhóm...">
-                                                                </div>
-                                                                <div class="sort-dropdown">
-                                                                    <select>
-                                                                        <option>Sắp xếp theo: Tất cả</option>
-                                                                        <option>Nhóm của tôi</option>
-                                                                        <option>Thành viên: Ít tới nhiều</option>
-                                                                        <option>Thành viên: Nhiều tới ít</option>
-                                                                    </select>
-                                                                </div>
-                                                            </div>
-
-                                                            <div class="courses-grid" data-aos="fade-up"
-                                                                data-aos-delay="200">
-                                                                <div class="row">
-                                                                    <div class="col-lg-6 col-md-6">
-                                                                        <div class="course-card">
-                                                                            <div class="course-image">
-                                                                                <img src="<?php echo _HOST_URL_TEMPLATES ?>/assets/img/education/courses-3.webp"
-                                                                                    alt="Course" class="img-fluid">
-                                                                                <div class="course-badge">Đã đủ thành
-                                                                                    viên
-                                                                                </div>
-                                                                                <div class="course-price">5/5</div>
-                                                                            </div>
-                                                                            <div class="course-content">
-                                                                                <div class="course-meta">
-                                                                                    <span
-                                                                                        class="category">Programming</span>
-                                                                                    <span
-                                                                                        class="level">Intermediate</span>
-                                                                                </div>
-                                                                                <h3>Tên nhóm</h3>
-                                                                                <p>Mô tả nhóm</p>
-                                                                                <div class="course-stats">
-                                                                                    <div class="stat">
-                                                                                        <i class="bi bi-clock"></i>
-                                                                                        <span>15 hours</span>
-                                                                                    </div>
-                                                                                    <div class="stat">
-                                                                                        <i class="bi bi-people"></i>
-                                                                                        <span>1,245 students</span>
-                                                                                    </div>
-                                                                                    <div class="rating">
-                                                                                        <i class="bi bi-star-fill"></i>
-                                                                                        <i class="bi bi-star-fill"></i>
-                                                                                        <i class="bi bi-star-fill"></i>
-                                                                                        <i class="bi bi-star-fill"></i>
-                                                                                        <i class="bi bi-star-fill"></i>
-                                                                                        <span>5 (89 reviews)</span>
-                                                                                    </div>
-                                                                                </div>
-                                                                                <div class="instructor-info">
-                                                                                    <img src="<?php echo _HOST_URL_TEMPLATES ?>/assets/img/person/person-m-3.webp"
-                                                                                        alt="Instructor"
-                                                                                        class="instructor-avatar">
-                                                                                    <span class="instructor-name">Giảng
-                                                                                        viên hướng dẫn / Nhóm
-                                                                                        trưởng</span>
-                                                                                </div>
-                                                                                <a href="enroll.html"
-                                                                                    class="btn-course">Xin vào / Đã
-                                                                                    đủ</a>
-                                                                            </div>
-                                                                        </div><!-- End Course Card -->
-                                                                    </div>
-
-                                                                    <div class="col-lg-6 col-md-6">
-                                                                        <div class="course-card">
-                                                                            <div class="course-image">
-                                                                                <img src="<?php echo _HOST_URL_TEMPLATES ?>/assets/img/education/courses-7.webp"
-                                                                                    alt="Course" class="img-fluid">
-                                                                                <div class="course-badge badge-free">
-                                                                                    Free</div>
-                                                                            </div>
-                                                                            <div class="course-content">
-                                                                                <div class="course-meta">
-                                                                                    <span class="category">Design</span>
-                                                                                    <span class="level">Beginner</span>
-                                                                                </div>
-                                                                                <h3>UI/UX Design Fundamentals</h3>
-                                                                                <p>Mauris blandit aliquet elit, eget
-                                                                                    tincidunt nibh pulvinar a.
-                                                                                    Vestibulum ac diam sit amet quam
-                                                                                    vehicula elementum sed sit amet.</p>
-                                                                                <div class="course-stats">
-                                                                                    <div class="stat">
-                                                                                        <i class="bi bi-clock"></i>
-                                                                                        <span>8 hours</span>
-                                                                                    </div>
-                                                                                    <div class="stat">
-                                                                                        <i class="bi bi-people"></i>
-                                                                                        <span>2,891 students</span>
-                                                                                    </div>
-                                                                                    <div class="rating">
-                                                                                        <i class="bi bi-star-fill"></i>
-                                                                                        <i class="bi bi-star-fill"></i>
-                                                                                        <i class="bi bi-star-fill"></i>
-                                                                                        <i class="bi bi-star-fill"></i>
-                                                                                        <i class="bi bi-star"></i>
-                                                                                        <span>4.6 (156 reviews)</span>
-                                                                                    </div>
-                                                                                </div>
-                                                                                <div class="instructor-info">
-                                                                                    <img src="<?php echo _HOST_URL_TEMPLATES ?>/assets/img/person/person-f-7.webp"
-                                                                                        alt="Instructor"
-                                                                                        class="instructor-avatar">
-                                                                                    <span class="instructor-name">Sarah
-                                                                                        Johnson</span>
-                                                                                </div>
-                                                                                <a href="enroll.html"
-                                                                                    class="btn-course">Start Free
-                                                                                    Course</a>
-                                                                            </div>
-                                                                        </div><!-- End Course Card -->
-                                                                    </div>
-
-                                                                </div>
-                                                            </div><!-- End Courses Grid -->
-
-                                                        </div>
-                                                    </div>
-
-                                                </div>
-
-                                            </section><!-- /Courses 2 Section -->
-
-                                        </div><!-- End Nhóm của tôi Tab -->
-
-                                    </div><!-- End course-detailsCourseTabContent -->
-                                </div><!-- End course-nav-tabs inner -->
-
-                            </div><!-- End event-groups tab-pane -->
-
-                            <!-- Cấu hình Tab -->
-                            <div class="tab-pane fade" id="event-config" role="tabpanel">
-                                <div class="event-config-content" data-aos="fade-up" data-aos-delay="100">
-                                    <h3>Cấu hình sự kiện</h3>
-                                    <p>Chọn khu vực cấu hình phù hợp để thiết lập quy chế, vòng thi và bộ tiêu chí.</p>
-
-                                    <div class="d-flex flex-column gap-2">
-                                        <a class="btn btn-primary" href="<?php echo _HOST_URL ?>/?module=event&action=config_rounds&id=<?php echo (int)$id_su_kien; ?>">
-                                            Cấu hình cơ bản
-                                        </a>
-                                        <a class="btn btn-primary" href="<?php echo _HOST_URL ?>/?module=event&action=config_rules&id=<?php echo (int)$id_su_kien; ?>">
-                                            Quy chế & Điều kiện
+                            <?php if ($is_btc || $is_giangvien): ?>
+                            <div class="tab-pane fade" id="event-grading" role="tabpanel">
+                                <div class="event-grading-content mt-4">
+                                    <h3 class="fw-bold text-success"><i class="bi bi-briefcase me-2"></i>Khu vực làm việc của Ban Giám Khảo</h3>
+                                    <div class="d-flex flex-column gap-3 mt-4">
+                                        <a class="btn btn-success text-start p-3 shadow-sm rounded-3" href="?module=event&action=my_grading_tasks&id=<?=$id_su_kien?>">
+                                            <div class="d-flex align-items-center">
+                                                <div class="bg-white text-success rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 50px; height: 50px;"><i class="bi bi-journal-check fs-4"></i></div>
+                                                <div><h5 class="mb-1 fw-bold text-white">Nhiệm vụ Chấm điểm</h5><small class="text-white-50">Truy cập danh sách các bài thi bạn được phân công đánh giá</small></div>
+                                            </div>
                                         </a>
                                         
-                                        <a class="btn btn-primary" href="<?php echo _HOST_URL ?>/?module=event&action=config_criteria&id=<?php echo (int)$id_su_kien; ?>">
-                                            Bộ tiêu chí & Chấm điểm
-                                        </a>
-                                        <a class="btn btn-primary" href="<?php echo _HOST_URL ?>/?module=event&action=config_assign&id=<?php echo (int)$id_su_kien; ?>">
-                                            Phân công chấm
-                                        </a>
-                                        <a class="btn btn-primary" href="<?php echo _HOST_URL ?>/?module=event&action=config_schedule&id=<?php echo (int)$id_su_kien; ?>">
-                                            Lập lịch tổ chức
-                                        </a>
+                                        <button class="btn btn-info text-start p-3 shadow-sm rounded-3 text-dark border-0" data-bs-toggle="modal" data-bs-target="#modalSchedule">
+                                            <div class="d-flex align-items-center">
+                                                <div class="bg-white text-info rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 50px; height: 50px;"><i class="bi bi-people fs-4"></i></div>
+                                                <div><h5 class="mb-1 fw-bold text-dark">Lịch trình Hội đồng / Tiểu ban</h5><small class="text-dark-50">Xem thông tin phòng, thời gian và các thành viên cùng Hội đồng</small></div>
+                                            </div>
+                                        </button>
                                     </div>
-                                </div><!-- End Cấu hình Tab -->
-
-                            </div><!-- End EventDetailsContent -->
-                        </div><!-- End course-nav-tabs -->
-
-                    </div><!-- End col-lg-8 -->
-
-                    <div class="col-lg-4">
-
-                        <!-- Enrollment Card -->
-                        <div class="enrollment-card d-none" data-aos="fade-up" data-aos-delay="200">
-
-                            <div class="card-header">
-                                <div class="price-display">
-                                    <span class="current-price">$149</span>
-                                    <span class="original-price">$249</span>
-                                    <span class="discount">40% OFF</span>
-                                </div>
-                                <div class="enrollment-count">
-                                    <i class="bi bi-people"></i>
-                                    <span>3,892 students enrolled</span>
                                 </div>
                             </div>
+                            <?php endif; ?>
 
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-lg-4">
+                    <div class="enrollment-card" data-aos="fade-up" data-aos-delay="200">
+                        <div class="card-header bg-primary text-white text-center py-4"><h4 class="m-0 fw-bold">Thông báo nhanh</h4></div>
+                        <div class="card-body">
+                            <div class="course-highlights">
+                                <div class="highlight-item"><i class="bi bi-calendar-check"></i> <span>Đang mở đăng ký</span></div>
+                                <div class="highlight-item"><i class="bi bi-diagram-3"></i> <span>Có 3 vòng thi</span></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <div class="modal fade" id="modalSchedule" tabindex="-1" aria-labelledby="modalScheduleLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content border-0 shadow">
+                <div class="modal-header bg-info text-dark">
+                    <h5 class="modal-title fw-bold" id="modalScheduleLabel"><i class="bi bi-calendar3 me-2"></i>Lịch trình Hội đồng của tôi</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4 bg-light">
+                    <?php if (empty($my_subcommittees)): ?>
+                        <div class="text-center py-4">
+                            <i class="bi bi-info-circle fs-1 text-muted d-block mb-2"></i>
+                            <p class="text-muted">Bạn chưa được phân công vào Tiểu ban báo cáo nào trong sự kiện này.</p>
+                        </div>
+                    <?php else: foreach ($my_subcommittees as $tb): ?>
+                        <div class="card shadow-sm border-0 mb-4 overflow-hidden">
+                            <div class="card-header bg-white border-bottom py-3">
+                                <h5 class="text-primary fw-bold mb-1"><?= htmlspecialchars($tb['tenTieuBan']) ?></h5>
+                                <span class="badge bg-primary bg-opacity-10 text-primary rounded-pill"><?= htmlspecialchars($tb['tenVongThi']) ?></span>
+                            </div>
                             <div class="card-body">
-                                <div class="course-highlights">
-                                    <div class="highlight-item">
-                                        <i class="bi bi-trophy"></i>
-                                        <span>Certificate included</span>
+                                <div class="row mb-4">
+                                    <div class="col-md-6 mb-3 mb-md-0">
+                                        <label class="text-muted small text-uppercase fw-bold d-block mb-1">Thời gian báo cáo</label>
+                                        <div class="d-flex align-items-center text-dark fw-bold">
+                                            <i class="bi bi-clock-fill me-2 text-info"></i>
+                                            <?= $tb['ngayBaoCao'] ? date('d/m/Y', strtotime($tb['ngayBaoCao'])) : 'Chưa xếp lịch' ?>
+                                        </div>
                                     </div>
-                                    <div class="highlight-item">
-                                        <i class="bi bi-clock-history"></i>
-                                        <span>45 hours content</span>
-                                    </div>
-                                    <div class="highlight-item">
-                                        <i class="bi bi-download"></i>
-                                        <span>Downloadable resources</span>
-                                    </div>
-                                    <div class="highlight-item">
-                                        <i class="bi bi-infinity"></i>
-                                        <span>Lifetime access</span>
-                                    </div>
-                                    <div class="highlight-item">
-                                        <i class="bi bi-phone"></i>
-                                        <span>Mobile access</span>
+                                    <div class="col-md-6">
+                                        <label class="text-muted small text-uppercase fw-bold d-block mb-1">Địa điểm / Phòng</label>
+                                        <div class="d-flex align-items-center text-dark fw-bold">
+                                            <i class="bi bi-geo-alt-fill me-2 text-danger"></i>
+                                            <?= htmlspecialchars($tb['diaDiem'] ?: 'Chưa xác định') ?>
+                                        </div>
                                     </div>
                                 </div>
 
-                                <div class="action-buttons">
-                                    <button class="btn-primary">Enroll Now</button>
-                                    <button class="btn-secondary">Add to Wishlist</button>
-                                </div>
-
-                                <div class="guarantee">
-                                    <i class="bi bi-shield-check"></i>
-                                    <span>30-day money-back guarantee</span>
+                                <div class="row">
+                                    <div class="col-md-6 mb-4 mb-md-0">
+                                        <h6 class="fw-bold mb-3 border-start border-4 border-info ps-2">Thành viên Hội đồng</h6>
+                                        <div class="d-flex flex-wrap gap-2">
+                                            <?php foreach ($tb['members'] as $m): ?>
+                                                <span class="badge bg-light text-dark border p-2 fw-normal">
+                                                    <i class="bi bi-person-fill me-1 text-secondary"></i><?= htmlspecialchars($m['tenGV']) ?>
+                                                </span>
+                                            <?php endforeach; ?>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <h6 class="fw-bold mb-3 border-start border-4 border-success ps-2">Danh sách bài báo cáo (<?= count($tb['products']) ?>)</h6>
+                                        <ul class="list-group list-group-flush small">
+                                            <?php foreach ($tb['products'] as $p): ?>
+                                                <li class="list-group-item bg-transparent px-0 border-0 py-1">
+                                                    <i class="bi bi-file-earmark-text me-2 text-success"></i>
+                                                    <strong><?= htmlspecialchars($p['tennhom'] ?: $p['manhom']) ?>:</strong> <?= htmlspecialchars($p['tensanpham']) ?>
+                                                </li>
+                                            <?php endforeach; ?>
+                                        </ul>
+                                    </div>
                                 </div>
                             </div>
-
-                        </div><!-- End Enrollment Card -->
-
-                        <!-- Course Details -->
-                        <div class="course-details-card" data-aos="fade-up" data-aos-delay="300">
-                            <h4>Course Details</h4>
-
-                            <div class="detail-grid">
-                                <div class="detail-row">
-                                    <span class="detail-label">Duration</span>
-                                    <span class="detail-value">16 weeks</span>
-                                </div>
-                                <div class="detail-row">
-                                    <span class="detail-label">Skill Level</span>
-                                    <span class="detail-value">Intermediate</span>
-                                </div>
-                                <div class="detail-row">
-                                    <span class="detail-label">Language</span>
-                                    <span class="detail-value">English</span>
-                                </div>
-                                <div class="detail-row">
-                                    <span class="detail-label">Quizzes</span>
-                                    <span class="detail-value">24</span>
-                                </div>
-                                <div class="detail-row">
-                                    <span class="detail-label">Assignments</span>
-                                    <span class="detail-value">8 projects</span>
-                                </div>
-                                <div class="detail-row">
-                                    <span class="detail-label">Updated</span>
-                                    <span class="detail-value">December 2024</span>
-                                </div>
-                            </div>
-                        </div><!-- End Course Details -->
-
-                        <!-- Share Course -->
-                        <div class="share-course-card" data-aos="fade-up" data-aos-delay="400">
-                            <h4>Share This Course</h4>
-                            <div class="social-links">
-                                <a href="#" class="social-link facebook">
-                                    <i class="bi bi-facebook"></i>
-                                </a>
-                                <a href="#" class="social-link twitter">
-                                    <i class="bi bi-twitter"></i>
-                                </a>
-                                <a href="#" class="social-link linkedin">
-                                    <i class="bi bi-linkedin"></i>
-                                </a>
-                                <a href="#" class="social-link email">
-                                    <i class="bi bi-envelope"></i>
-                                </a>
-                            </div>
-                        </div><!-- End Share Course -->
-
-                    </div><!-- End col-lg-4 -->
-
-                </div><!-- End row -->
-
-            </div><!-- End container -->
-
-    </section><!-- /Course Details Section -->
+                        </div>
+                    <?php endforeach; endif; ?>
+                </div>
+                <div class="modal-footer border-0 bg-white">
+                    <button type="button" class="btn btn-secondary rounded-pill px-4" data-bs-dismiss="modal">Đóng</button>
+                </div>
+            </div>
+        </div>
+    </div>
 
 </main>
-<?php
-layout('footer');
-?>
+<?php layout('footer'); ?>
