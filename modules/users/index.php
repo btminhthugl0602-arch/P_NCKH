@@ -67,9 +67,10 @@ layout('navbar');
             <td>18</td>
             <td>Giảng viên</td>
             <td>
-              <a href="instructor-profile.html" class="btn btn-sm btn-outline-primary">
-                <i class="bi bi-eye"></i> View Profile
-              </a>
+              <a href="<?= _HOST_URL ?>?module=profile&action=index" 
+   class="btn btn-sm btn-outline-primary">
+   <i class="bi bi-eye"></i> View Profile
+</a>
             </td>
           </tr>
 
