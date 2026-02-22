@@ -55,6 +55,46 @@ if (isset($_POST['xoa_thanh_vien']) && $isTruong) {
     header("Location: " . $_SERVER['REQUEST_URI']); exit();
 }
 
+// ================== XỬ LÝ RỜI NHÓM ==================
+if (isset($_POST['roi_nhom']) && $isMember && !$isTruong) {
+    $result = roi_nhom($conn, $userId, $idNhom, $userId);
+    if ($result['status']) {
+        $_SESSION['flash_msg']  = 'Bạn đã rời nhóm thành công.';
+        $_SESSION['flash_type'] = 'success';
+        header("Location: " . _HOST_URL . "?module=event&action=view&id=" . $idSK); exit();
+    } else {
+        $_SESSION['flash_msg']  = $result['message'];
+        $_SESSION['flash_type'] = 'danger';
+        header("Location: " . $_SERVER['REQUEST_URI']); exit();
+    }
+}
+
+// ================== XỬ LÝ NHƯỢNG QUYỀN TRƯỞNG NHÓM ==================
+if (isset($_POST['nhuong_quyen']) && $isTruong) {
+    $idTKMoi = (int)($_POST['idTKMoi'] ?? 0);
+    if ($idTKMoi > 0 && $idTKMoi !== $userId) {
+        // Kiểm tra người được nhượng quyền phải là thành viên nhóm
+        $checkTV = mysqli_query($conn, "SELECT idvaitronhom FROM thanhviennhom WHERE idnhom=$idNhom AND idtk=$idTKMoi AND trangthai=1 LIMIT 1");
+        if ($checkTV && mysqli_num_rows($checkTV) > 0) {
+            $tvRow = mysqli_fetch_assoc($checkTV);
+            if ($tvRow['idvaitronhom'] != 3) { // không nhượng cho GVHD
+                mysqli_query($conn, "UPDATE thanhviennhom SET idvaitronhom=2 WHERE idnhom=$idNhom AND idtk=$userId AND trangthai=1");
+                mysqli_query($conn, "UPDATE thanhviennhom SET idvaitronhom=1 WHERE idnhom=$idNhom AND idtk=$idTKMoi AND trangthai=1");
+                mysqli_query($conn, "UPDATE nhom SET idnhomtruong=$idTKMoi WHERE idnhom=$idNhom");
+                $_SESSION['flash_msg']  = 'Đã nhượng quyền trưởng nhóm thành công.';
+                $_SESSION['flash_type'] = 'success';
+            } else {
+                $_SESSION['flash_msg']  = 'Không thể nhượng quyền cho Giảng viên hướng dẫn.';
+                $_SESSION['flash_type'] = 'warning';
+            }
+        } else {
+            $_SESSION['flash_msg']  = 'Người được chọn không phải thành viên nhóm.';
+            $_SESSION['flash_type'] = 'danger';
+        }
+    }
+    header("Location: " . $_SERVER['REQUEST_URI']); exit();
+}
+
 // ================== XỬ LÝ CẬP NHẬT NHÓM ==================
 if (isset($_POST['cap_nhat_nhom']) && $isTruong) {
     $tenNhomMoi  = mysqli_real_escape_string($conn, trim($_POST['tennhom'] ?? ''));
@@ -71,13 +111,13 @@ if (isset($_POST['cap_nhat_nhom']) && $isTruong) {
 // ================== AJAX ==================
 if (isset($_POST['ajax_action']) && $userId > 0) {
     header('Content-Type: application/json; charset=utf-8');
-    $action = $_POST['ajax_action'];
+    $ajax_action = $_POST['ajax_action'];
 
-    if ($action === 'moi_thanh_vien' && $isTruong) {
+    if ($ajax_action === 'moi_thanh_vien' && $isTruong) {
         $idSV   = (int)($_POST['idSV'] ?? 0);
         $loiNhan = trim($_POST['loiNhan'] ?? '');
         $result = gui_yeu_cau_nhom($conn, $idNhom, $idSV, 0, $loiNhan);
-    } elseif ($action === 'moi_gvhd' && $isTruong) {
+    } elseif ($ajax_action === 'moi_gvhd' && $isTruong) {
         $idGV   = (int)($_POST['idGV'] ?? 0);
         $loiNhan = trim($_POST['loiNhan'] ?? '');
         $result = gui_yeu_cau_nhom($conn, $idNhom, $idGV, 0, $loiNhan);
@@ -280,7 +320,7 @@ layout('navbar');
             <nav class="breadcrumbs">
                 <ol>
                     <li><a href="<?= _HOST_URL ?>">Home</a></li>
-                    <li><a href="<?= _HOST_URL ?>?module=event&action=detail&id=<?= $idSK ?>"><?= htmlspecialchars($nhom['tenSK']) ?></a></li>
+                    <li><a href="<?= _HOST_URL ?>?module=event&action=view&id=<?= $idSK ?>"><?= htmlspecialchars($nhom['tenSK']) ?></a></li>
                     <li class="current"><?= htmlspecialchars($nhom['tennhom']) ?></li>
                 </ol>
             </nav>
@@ -782,7 +822,7 @@ layout('navbar');
                             <div class="detail-row">
                                 <span class="detail-label">Sự kiện</span>
                                 <span class="detail-value">
-                                    <a href="<?= _HOST_URL ?>?module=event&action=detail&id=<?= $idSK ?>">
+                                    <a href="<?= _HOST_URL ?>?module=event&action=view&id=<?= $idSK ?>">
                                         <?= htmlspecialchars($nhom['tenSK']) ?>
                                     </a>
                                 </span>
@@ -843,6 +883,40 @@ layout('navbar');
                             </div>
                         <?php endforeach; ?>
                     </div>
+
+                    <!-- Hành động của thành viên -->
+                    <?php if ($isMember): ?>
+                    <div class="course-details-card mt-4" data-aos="fade-up" data-aos-delay="500">
+                        <h4>Hành động</h4>
+                        <div class="d-flex flex-column gap-2">
+
+                            <?php if ($isTruong): ?>
+                            <!-- Nút Nhượng quyền (chỉ trưởng nhóm) -->
+                            <?php
+                            $svTrongNhom = array_filter($danhSachTV, fn($tv) => $tv['idvaitronhom'] == 2);
+                            ?>
+                            <?php if (!empty($svTrongNhom)): ?>
+                            <button type="button" class="btn btn-outline-warning w-100"
+                                data-bs-toggle="modal" data-bs-target="#nhuongQuyenModal">
+                                <i class="bi bi-arrow-left-right me-2"></i>Nhượng quyền trưởng nhóm
+                            </button>
+                            <?php else: ?>
+                            <button type="button" class="btn btn-outline-secondary w-100" disabled
+                                title="Cần có thành viên khác để nhượng quyền">
+                                <i class="bi bi-arrow-left-right me-2"></i>Nhượng quyền trưởng nhóm
+                            </button>
+                            <?php endif; ?>
+                            <?php else: ?>
+                            <!-- Nút Rời nhóm (thành viên thường) -->
+                            <button type="button" class="btn btn-outline-danger w-100"
+                                data-bs-toggle="modal" data-bs-target="#roiNhomModal">
+                                <i class="bi bi-box-arrow-left me-2"></i>Rời nhóm
+                            </button>
+                            <?php endif; ?>
+
+                        </div>
+                    </div>
+                    <?php endif; ?>
                 </div>
 
             </div>
@@ -851,6 +925,85 @@ layout('navbar');
 </main>
 
 <?php layout('footer'); ?>
+
+<!-- MODAL RỜI NHÓM -->
+<?php if ($isMember && !$isTruong): ?>
+<div class="modal fade" id="roiNhomModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header-grad d-flex justify-content-between align-items-center">
+                <h5 class="modal-title mb-0"><i class="bi bi-box-arrow-left me-2"></i>Rời nhóm</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4">
+                <div class="alert alert-warning d-flex align-items-start gap-2 mb-0">
+                    <i class="bi bi-exclamation-triangle-fill fs-5 flex-shrink-0 mt-1"></i>
+                    <div>
+                        Bạn có chắc muốn rời khỏi nhóm <strong><?= htmlspecialchars($nhom['tennhom']) ?></strong>?<br>
+                        <span class="small text-muted">Sau khi rời, bạn cần được mời lại hoặc xin vào nhóm mới để tham gia sự kiện.</span>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Huỷ</button>
+                <form method="POST">
+                    <input type="hidden" name="roi_nhom" value="1">
+                    <button type="submit" class="btn btn-danger">
+                        <i class="bi bi-box-arrow-left me-1"></i>Xác nhận rời nhóm
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
+
+<!-- MODAL NHƯỢNG QUYỀN -->
+<?php if ($isTruong): ?>
+<?php $svTrongNhom = array_filter($danhSachTV, fn($tv) => $tv['idvaitronhom'] == 2); ?>
+<?php if (!empty($svTrongNhom)): ?>
+<div class="modal fade" id="nhuongQuyenModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header-grad d-flex justify-content-between align-items-center">
+                <h5 class="modal-title mb-0"><i class="bi bi-arrow-left-right me-2"></i>Nhượng quyền trưởng nhóm</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST">
+                <input type="hidden" name="nhuong_quyen" value="1">
+                <div class="modal-body p-4">
+                    <div class="alert alert-info d-flex align-items-start gap-2 mb-3">
+                        <i class="bi bi-info-circle-fill fs-5 flex-shrink-0 mt-1"></i>
+                        <div>
+                            Sau khi nhượng quyền, bạn sẽ trở thành thành viên thường.<br>
+                            <span class="small">Hành động này không thể hoàn tác.</span>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Chọn thành viên nhận quyền <span class="text-danger">*</span></label>
+                        <select name="idTKMoi" class="form-select" required>
+                            <option value="">-- Chọn thành viên --</option>
+                            <?php foreach ($svTrongNhom as $tv): ?>
+                                <option value="<?= $tv['idtk'] ?>">
+                                    <?= htmlspecialchars($tv['tenTV']) ?>
+                                    <?= !empty($tv['vaiTro']) ? ' (' . htmlspecialchars($tv['vaiTro']) . ')' : '' ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Huỷ</button>
+                    <button type="submit" class="btn btn-warning text-white">
+                        <i class="bi bi-arrow-left-right me-1"></i>Nhượng quyền
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
+<?php endif; ?>
 
 <script>
 const AJAX_URL = window.location.href;

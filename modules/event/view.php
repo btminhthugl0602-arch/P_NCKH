@@ -17,13 +17,18 @@ $userId = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
 
 // ================== XỬ LÝ TẠO NHÓM ==================
 if (isset($_POST['create_group']) && $userId > 0) {
-    $tennhom = mysqli_real_escape_string($conn, trim($_POST['tennhom'] ?? ''));
-    $mota    = mysqli_real_escape_string($conn, trim($_POST['mota'] ?? ''));
+    $tennhom = trim($_POST['tennhom'] ?? '');
+    $mota    = trim($_POST['mota'] ?? '');
+    $soluongtoida = max(1, (int)($_POST['soluongtoida'] ?? 5));
     if (!empty($tennhom)) {
-        mysqli_query($conn, "INSERT INTO nhom (idSK, idnhomtruong, ngaytao, isActive) VALUES ($id, $userId, NOW(), 1)");
-        $idNhom = mysqli_insert_id($conn);
-        mysqli_query($conn, "INSERT INTO thongtinnhom (idnhom, tennhom, mota, soluongtoida, dangtuyen) VALUES ($idNhom, '$tennhom', '$mota', 5, 1)");
-        mysqli_query($conn, "INSERT INTO thanhviennhom (idnhom, idtk, idvaitronhom, trangthai) VALUES ($idNhom, $userId, 1, 1)");
+        $result = tao_nhom_moi($conn, $userId, $id, $tennhom, $mota);
+        if ($result['status']) {
+            $_SESSION['flash_msg']  = 'Tạo nhóm thành công!';
+            $_SESSION['flash_type'] = 'success';
+        } else {
+            $_SESSION['flash_msg']  = $result['message'];
+            $_SESSION['flash_type'] = 'danger';
+        }
         header("Location: " . $_SERVER['REQUEST_URI']); exit();
     }
 }
@@ -31,21 +36,14 @@ if (isset($_POST['create_group']) && $userId > 0) {
 // ================== XỬ LÝ XIN VÀO NHÓM (từ tất cả nhóm) ==================
 if (isset($_POST['xin_vao_nhom']) && $userId > 0) {
     $idNhomXin = (int)($_POST['idNhom'] ?? 0);
-    $loiNhanXin = mysqli_real_escape_string($conn, trim($_POST['loiNhan'] ?? ''));
+    $loiNhanXin = trim($_POST['loiNhan'] ?? '');
     if ($idNhomXin > 0) {
-        // Kiểm tra đã có yêu cầu chờ chưa
-        $checkExist = mysqli_query($conn, "SELECT idYeuCau FROM yeucau_thamgia WHERE idNhom=$idNhomXin AND idTK=$userId AND trangThai=0");
-        // Kiểm tra đã là thành viên chưa
-        $checkMember = mysqli_query($conn, "SELECT idtk FROM thanhviennhom WHERE idnhom=$idNhomXin AND idtk=$userId AND trangthai=1");
-        if (mysqli_num_rows($checkExist) == 0 && mysqli_num_rows($checkMember) == 0) {
-            // ChieuMoi=1 = người dùng xin vào nhóm (nhóm trưởng duyệt)
-            mysqli_query($conn, "INSERT INTO yeucau_thamgia (idNhom, idTK, trangThai, ChieuMoi, loiNhan, ngayGui) VALUES ($idNhomXin, $userId, 0, 1, '$loiNhanXin', NOW())");
-            $_SESSION['flash_msg']  = 'Đã gửi yêu cầu tham gia nhóm thành công! Chờ trưởng nhóm duyệt.';
-            $_SESSION['flash_type'] = 'success';
-        } else {
-            $_SESSION['flash_msg']  = 'Bạn đã gửi yêu cầu hoặc đã là thành viên của nhóm này.';
-            $_SESSION['flash_type'] = 'warning';
-        }
+        // ChieuMoi=1 = người dùng xin vào nhóm (nhóm trưởng duyệt)
+        $result = gui_yeu_cau_nhom($conn, $idNhomXin, $userId, 1, $loiNhanXin);
+        $_SESSION['flash_msg']  = $result['status']
+            ? 'Đã gửi yêu cầu tham gia nhóm thành công! Chờ trưởng nhóm duyệt.'
+            : $result['message'];
+        $_SESSION['flash_type'] = $result['status'] ? 'success' : 'warning';
     }
     header("Location: " . $_SERVER['REQUEST_URI']); exit();
 }
@@ -53,7 +51,7 @@ if (isset($_POST['xin_vao_nhom']) && $userId > 0) {
 // ================== LẤY TẤT CẢ NHÓM ==================
 $sql_all = "
     SELECT n.idnhom, t.tennhom, t.mota, t.soluongtoida, t.dangtuyen,
-           COUNT(tv.idtk) AS soThanhVien,
+           COUNT(CASE WHEN tv.idvaitronhom != 3 THEN tv.idtk END) AS soThanhVien,
            COALESCE(sv.tenSV, gv.tenGV, tk_truong.tenTK, '') AS tenNhomTruong
     FROM nhom n
     LEFT JOIN thongtinnhom  t         ON n.idnhom = t.idnhom
@@ -86,7 +84,7 @@ $myGroups = [];
 if ($userId > 0) {
     $sql_my = "
         SELECT n.idnhom, t.tennhom, t.mota, t.soluongtoida, t.dangtuyen,
-               COUNT(tv2.idtk) AS soThanhVien,
+               COUNT(CASE WHEN tv2.idvaitronhom != 3 THEN tv2.idtk END) AS soThanhVien,
                COALESCE(sv.tenSV, gv.tenGV, tk_truong.tenTK, '') AS tenNhomTruong,
                vn.tenvaitronhom AS vaiTroToi, tv_me.idvaitronhom, n.idnhomtruong
         FROM nhom n
@@ -139,7 +137,7 @@ if ($userId > 0) {
     $res_lm = mysqli_query($conn, "
         SELECT yc.idYeuCau, yc.idNhom, yc.loiNhan, yc.ngayGui, yc.ChieuMoi,
                t.tennhom, t.mota, t.soluongtoida,
-               COUNT(tv.idtk) AS soThanhVien,
+               COUNT(CASE WHEN tv.idvaitronhom != 3 THEN tv.idtk END) AS soThanhVien,
                COALESCE(sv_t.tenSV, gv_t.tenGV, tk_truong.tenTK, '') AS tenNhomTruong,
                n.idnhomtruong
         FROM yeucau_thamgia yc
@@ -166,8 +164,8 @@ $soLoiMoi = count($loiMoiList);
 // AJAX: phản hồi lời mời
 if (isset($_POST['ajax_action']) && $userId > 0) {
     header('Content-Type: application/json; charset=utf-8');
-    $action = $_POST['ajax_action'];
-    if ($action === 'phan_hoi_loi_moi') {
+    $ajax_action = $_POST['ajax_action'];
+    if ($ajax_action === 'phan_hoi_loi_moi') {
         $idYeuCau  = (int)($_POST['idYeuCau'] ?? 0);
         $trangThai = (int)($_POST['trangThai'] ?? 2);
         $result = duyet_yeu_cau_nhom($conn, $userId, $idYeuCau, $trangThai);
@@ -399,7 +397,7 @@ layout('navbar');
                                                                 <?php if (!empty($groups)): ?>
                                                                     <?php foreach ($groups as $g): ?>
                                                                         <?php 
-                                                                        $isFull = $g['soThanhVien'] >= $g['soluongtoida'];
+                                                                        $isFull = $g['soluongtoida'] > 0 && $g['soThanhVien'] >= $g['soluongtoida'];
                                                                         $isMyGroup = in_array($g['idnhom'], $myGroupIds);
                                                                         $isPending = in_array($g['idnhom'], $pendingGroupIds);
                                                                         ?>
@@ -417,7 +415,7 @@ layout('navbar');
                                                                                     <div class="course-price"><?= $g['soThanhVien'] ?>/<?= $g['soluongtoida'] ?></div>
                                                                                 </div>
                                                                                 <div class="course-content">
-                                                                                    <h3><?= htmlspecialchars($g['tennhom']) ?></h3>
+                                                                                    <h3><?= htmlspecialchars($g['tennhom'] ?? '') ?></h3>
                                                                                     <p class="text-muted small mb-1"><?= htmlspecialchars($g['mota'] ?? 'Chưa có mô tả') ?></p>
                                                                                     <div class="course-stats">
                                                                                         <div class="stat"><i class="bi bi-people"></i><span><?= $g['soThanhVien'] ?>/<?= $g['soluongtoida'] ?> thành viên</span></div>
@@ -430,7 +428,7 @@ layout('navbar');
 
                                                                                     <div class="mt-2 d-flex gap-2 flex-wrap">
                                                                                         <!-- Nút xem chi tiết nhóm -->
-                                                                                        <a href="<?= _HOST_URL ?>?module=event&action=chitietnhom&id=<?= $g['idnhom'] ?>" 
+                                                                                        <a href="<?= _HOST_URL ?>?module=event&action=chitiethom&id=<?= $g['idnhom'] ?>" 
                                                                                            class="btn-course">
                                                                                             <i class="bi bi-eye me-1"></i>Xem nhóm
                                                                                         </a>
@@ -520,7 +518,7 @@ layout('navbar');
 
                                                             <!-- Action: chỉ 1 nút Xem nhóm -->
                                                             <div class="nhom-actions">
-                                                                <a href="<?= _HOST_URL ?>?module=event&action=chitietnhom&id=<?= $gId ?>" 
+                                                                <a href="<?= _HOST_URL ?>?module=event&action=chitiethom&id=<?= $gId ?>" 
                                                                    class="btn-nhom btn-nhom-view">
                                                                     <i class="bi bi-arrow-right-circle"></i> Xem nhóm
                                                                 </a>
@@ -672,6 +670,11 @@ layout('navbar');
                     <div class="mb-3">
                         <label class="form-label fw-semibold">Mô tả nhóm</label>
                         <textarea name="mota" class="form-control" rows="3" placeholder="Mô tả ngắn về nhóm..."></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Số thành viên tối đa <span class="text-danger">*</span></label>
+                        <input type="number" name="soluongtoida" class="form-control" required min="1" max="20" placeholder="Ví dụ: 5" value="5">
+                        <div class="form-text">Số lượng thành viên tối đa (không tính GVHD).</div>
                     </div>
                 </div>
                 <div class="modal-footer">
