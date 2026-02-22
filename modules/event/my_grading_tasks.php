@@ -3,8 +3,10 @@ if (!defined('_AUTHEN')) die('Truy cập không hợp lệ');
 require_once _PATH_URL . '/modules/functions/base.php';
 
 $id_su_kien = isset($_GET['id']) ? (int)$_GET['id'] : 0;
-// Giả định lấy ID Giảng viên từ Session (Thay bằng session thực tế của bạn)
-$id_gv = $_SESSION['user_id'] ?? 1; // Để số 1 hoặc 2 để test theo dữ liệu giả lập hôm qua
+// Lấy idGV thực tế từ idTK trong session
+$id_user = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
+$res_gv_me = mysqli_query($conn, "SELECT idGV FROM giangvien WHERE idTK = $id_user LIMIT 1");
+$id_gv = ($res_gv_me && mysqli_num_rows($res_gv_me) > 0) ? (int)mysqli_fetch_assoc($res_gv_me)['idGV'] : $id_user;
 
 if ($id_su_kien == 0) {
     die("Không tìm thấy sự kiện.");

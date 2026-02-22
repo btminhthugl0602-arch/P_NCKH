@@ -2,8 +2,10 @@
 if (!defined('_AUTHEN')) die('Truy cập không hợp lệ');
 require_once _PATH_URL . '/modules/functions/base.php';
 
-// Giả định lấy ID Giảng viên từ Session (bạn tự chỉnh lại theo session thực tế của hệ thống nhé)
-$id_gv = $_SESSION['user_id'] ?? 1; // Mặc định là 1 để test
+// Lấy idGV thực tế từ idTK trong session
+$id_user = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
+$res_gv_me = mysqli_query($conn, "SELECT idGV FROM giangvien WHERE idTK = $id_user LIMIT 1");
+$id_gv = ($res_gv_me && mysqli_num_rows($res_gv_me) > 0) ? (int)mysqli_fetch_assoc($res_gv_me)['idGV'] : $id_user;
 
 $id_sp = isset($_GET['idSP']) ? (int)$_GET['idSP'] : 0;
 $id_vong = isset($_GET['idVong']) ? (int)$_GET['idVong'] : 0;
@@ -70,6 +72,17 @@ if (isPost()) {
 $sql_sp = "SELECT sp.tensanpham, n.manhom, ttn.tennhom FROM sanpham sp LEFT JOIN nhom n ON sp.idNhom = n.idnhom LEFT JOIN thongtinnhom ttn ON n.idnhom = ttn.idnhom WHERE sp.idSanPham = $id_sp";
 $sp_info = mysqli_fetch_assoc(mysqli_query($conn, $sql_sp));
 
+// 1b. Lấy các file sản phẩm đã nộp
+$sql_files = "SELECT sp2.idSanPham, sp2.moTataiLieu, sp2.idloaitailieu, l.loaitailieu AS tenLoai
+    FROM sanpham sp2
+    LEFT JOIN loaitailieu l ON sp2.idloaitailieu = l.idtailieu
+    WHERE sp2.idNhom = (SELECT idNhom FROM sanpham WHERE idSanPham = $id_sp LIMIT 1)
+      AND sp2.idSK = $id_sk
+      AND sp2.moTataiLieu IS NOT NULL AND sp2.moTataiLieu != ''
+    ORDER BY sp2.idloaitailieu ASC";
+$res_files = mysqli_query($conn, $sql_files);
+$sp_files = $res_files ? mysqli_fetch_all($res_files, MYSQLI_ASSOC) : [];
+
 // 2. Lấy danh sách tiêu chí dựa trên cấu hình của Vòng thi đó
 $sql_tc = "
     SELECT tc.idTieuChi, tc.noiDungTieuChi, btt.diemToiDa 
@@ -126,9 +139,82 @@ layout('header'); layout('navbar');
         </div>
     </div>
 
+    <!-- ===== PHẦN SẢN PHẨM ĐÃ NỘP ===== -->
+    <div class="card shadow-sm border-0 mb-4">
+        <div class="card-header bg-white pt-3 pb-2 border-0 d-flex align-items-center justify-content-between">
+            <h5 class="fw-bold text-dark mb-0"><i class="bi bi-folder2-open text-warning me-2"></i>Tài liệu / Sản phẩm đã nộp</h5>
+            <span class="badge bg-<?php echo empty($sp_files) ? 'secondary' : 'success'; ?> rounded-pill">
+                <?php echo count($sp_files); ?> tập tin
+            </span>
+        </div>
+        <div class="card-body bg-light">
+            <?php if (empty($sp_files)): ?>
+                <div class="alert alert-warning mb-0 d-flex align-items-center gap-2">
+                    <i class="bi bi-exclamation-triangle-fill fs-5"></i>
+                    <span>Nhóm chưa nộp tài liệu nào. Vui lòng liên hệ nhóm để kiểm tra.</span>
+                </div>
+            <?php else: ?>
+                <?php
+                $loai_info = [
+                    1 => ['icon' => 'bi-file-earmark-text',      'color' => 'primary', 'label' => 'Báo cáo tóm tắt'],
+                    2 => ['icon' => 'bi-file-earmark-richtext',   'color' => 'info',    'label' => 'Báo cáo toàn văn'],
+                    3 => ['icon' => 'bi-github',                  'color' => 'dark',    'label' => 'Source Code / Mã nguồn'],
+                ];
+                foreach ($sp_files as $file):
+                    $li = $loai_info[$file['idloaitailieu']] ?? ['icon' => 'bi-file-earmark', 'color' => 'secondary', 'label' => ($file['tenLoai'] ?: 'Tệp đính kèm')];
+                    $file_url = (strpos($file['moTataiLieu'], 'http') === 0)
+                        ? $file['moTataiLieu']
+                        : _HOST_URL . '/' . ltrim($file['moTataiLieu'], '/');
+                    $ext = strtolower(pathinfo($file['moTataiLieu'], PATHINFO_EXTENSION));
+                    $is_pdf = ($ext === 'pdf');
+                ?>
+                <div class="border rounded-3 bg-white mb-3 overflow-hidden">
+                    <!-- File header -->
+                    <div class="d-flex align-items-center gap-3 p-3 border-bottom">
+                        <div class="rounded-circle d-flex align-items-center justify-content-center flex-shrink-0"
+                             style="width:44px;height:44px;background:var(--bs-<?php echo $li['color']; ?>-bg-subtle,#f0f0f0);">
+                            <i class="bi <?php echo $li['icon']; ?> text-<?php echo $li['color']; ?> fs-5"></i>
+                        </div>
+                        <div class="flex-grow-1 min-width-0">
+                            <div class="fw-bold text-<?php echo $li['color']; ?> small"><?php echo $li['label']; ?></div>
+                            <div class="text-muted small text-truncate"><?php echo htmlspecialchars(basename($file['moTataiLieu'])); ?></div>
+                        </div>
+                        <div class="d-flex gap-2 flex-shrink-0">
+                            <?php if ($is_pdf): ?>
+                            <button class="btn btn-sm btn-outline-secondary rounded-pill px-3"
+                                    type="button" data-bs-toggle="collapse"
+                                    data-bs-target="#preview_<?php echo $file['idSanPham'] . '_' . $file['idloaitailieu']; ?>">
+                                <i class="bi bi-eye me-1"></i>Xem trước
+                            </button>
+                            <?php endif; ?>
+                            <a href="<?php echo htmlspecialchars($file_url); ?>" target="_blank"
+                               class="btn btn-sm btn-<?php echo $li['color']; ?> rounded-pill px-3">
+                                <i class="bi bi-download me-1"></i>Tải xuống
+                            </a>
+                        </div>
+                    </div>
+                    <!-- PDF preview (collapsible) -->
+                    <?php if ($is_pdf): ?>
+                    <div class="collapse" id="preview_<?php echo $file['idSanPham'] . '_' . $file['idloaitailieu']; ?>">
+                        <div class="p-2 bg-light border-top">
+                            <iframe src="<?php echo htmlspecialchars($file_url); ?>#toolbar=1&navpanes=0"
+                                    width="100%" height="600"
+                                    class="rounded border-0"
+                                    style="display:block;">
+                            </iframe>
+                        </div>
+                    </div>
+                    <?php endif; ?>
+                </div>
+                <?php endforeach; ?>
+            <?php endif; ?>
+        </div>
+    </div>
+
+    <!-- ===== BẢNG CHẤM ĐIỂM ===== -->
     <div class="card shadow-sm border-0">
-        <div class="card-header bg-white pt-3 pb-2 border-0">
-            <h5 class="fw-bold text-dark"><i class="bi bi-ui-checks me-2"></i>Bảng đánh giá theo Tiêu chí</h5>
+        <div class="card-header bg-white pt-3 pb-2 border-0 d-flex align-items-center justify-content-between">
+            <h5 class="fw-bold text-dark mb-0"><i class="bi bi-ui-checks me-2"></i>Bảng đánh giá theo Tiêu chí</h5>
         </div>
         <div class="card-body bg-light">
             <?php if (empty($ds_tieuchi)): ?>

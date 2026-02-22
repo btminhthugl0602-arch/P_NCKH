@@ -149,7 +149,9 @@ if (isset($_POST['nop_bai']) && $isMember) {
             if ($_FILES['files']['size'][$i] > 20 * 1024 * 1024) continue;
             if (in_array($ext, ['zip','rar'])) { $idLoai = 3; }
             else { $idLoai = $docIndex <= 1 ? 1 : 2; $docIndex++; }
-            $newName = 'loai'.$idLoai.'_nhom'.$idNhom.'_'.time().'_'.$i.'.'.$ext;
+            $originalName = pathinfo($_FILES['files']['name'][$i], PATHINFO_FILENAME);
+            $safeOriginal = preg_replace('/[^a-zA-Z0-9_\-\.\x{0080}-\x{FFFF}]/u', '_', $originalName);
+            $newName = $safeOriginal . '_' . time() . '.' . $ext;
             if (move_uploaded_file($_FILES['files']['tmp_name'][$i], $uploadDir.$newName)) {
                 $uploaded[$idLoai] = mysqli_real_escape_string($conn, 'uploads/sanpham/'.$newName);
             }
@@ -250,7 +252,7 @@ $flashMsg  = $_SESSION['flash_msg']  ?? '';
 $flashType = $_SESSION['flash_type'] ?? 'info';
 unset($_SESSION['flash_msg'], $_SESSION['flash_type']);
 
-$data = ['page_title' => 'Chi tiết nhóm: ' . htmlspecialchars($nhom['tennhom'])];
+$data = ['page_title' => 'Chi tiết nhóm: ' . htmlspecialchars($nhom['tennhom'] ?? '')];
 layout('header', $data);
 layout('navbar');
 ?>
@@ -316,12 +318,12 @@ layout('navbar');
 
     <div class="page-title light-background">
         <div class="container d-lg-flex justify-content-between align-items-center">
-            <h1 class="mb-2 mb-lg-0"><?= htmlspecialchars($nhom['tennhom']) ?></h1>
+            <h1 class="mb-2 mb-lg-0"><?= htmlspecialchars($nhom['tennhom'] ?? '') ?></h1>
             <nav class="breadcrumbs">
                 <ol>
                     <li><a href="<?= _HOST_URL ?>">Home</a></li>
-                    <li><a href="<?= _HOST_URL ?>?module=event&action=view&id=<?= $idSK ?>"><?= htmlspecialchars($nhom['tenSK']) ?></a></li>
-                    <li class="current"><?= htmlspecialchars($nhom['tennhom']) ?></li>
+                    <li><a href="<?= _HOST_URL ?>?module=event&action=view&id=<?= $idSK ?>"><?= htmlspecialchars($nhom['tenSK'] ?? '') ?></a></li>
+                    <li class="current"><?= htmlspecialchars($nhom['tennhom'] ?? '') ?></li>
                 </ol>
             </nav>
         </div>
@@ -339,15 +341,15 @@ layout('navbar');
                                 <span class="category">Nhóm thi</span>
                                 <span class="level"><?= $nhom['dangtuyen'] ? 'Đang tuyển' : 'Đã đủ thành viên' ?></span>
                             </div>
-                            <h1><?= htmlspecialchars($nhom['tennhom']) ?></h1>
+                            <h1><?= htmlspecialchars($nhom['tennhom'] ?? '') ?></h1>
                             <p class="course-subtitle"><?= nl2br(htmlspecialchars($nhom['mota'] ?? 'Chưa có mô tả.')) ?></p>
 
                             <!-- Sự kiện như "instructor card" -->
                             <div class="instructor-card">
                                 <img src="<?= _HOST_URL_TEMPLATES ?>/assets/img/education/courses-8.webp" alt="Event" class="instructor-image" style="object-fit:cover;">
                                 <div class="instructor-details">
-                                    <h5><?= htmlspecialchars($nhom['tenSK']) ?></h5>
-                                    <span>Nhóm trưởng: <?= htmlspecialchars($nhom['tenNhomTruong']) ?></span>
+                                    <h5><?= htmlspecialchars($nhom['tenSK'] ?? '') ?></h5>
+                                    <span>Nhóm trưởng: <?= htmlspecialchars($nhom['tenNhomTruong'] ?? '') ?></span>
                                     <?php if ($gvhd): ?>
                                         <div class="mt-1">
                                             <span class="badge" style="background:#4f46e5;color:#fff;font-size:11px;">
@@ -510,7 +512,7 @@ layout('navbar');
                                                 <input type="hidden" name="cap_nhat_nhom" value="1">
                                                 <div class="mb-3">
                                                     <label class="form-label fw-semibold">Tên nhóm</label>
-                                                    <input type="text" name="tennhom" class="form-control" value="<?= htmlspecialchars($nhom['tennhom']) ?>">
+                                                    <input type="text" name="tennhom" class="form-control" value="<?= htmlspecialchars($nhom['tennhom'] ?? '') ?>">
                                                 </div>
                                                 <div class="mb-3">
                                                     <label class="form-label fw-semibold">Mô tả</label>
@@ -718,7 +720,6 @@ layout('navbar');
                                                             if (!$sp) continue; ?>
                                                             <div class="submitted-file-row">
                                                                 <i class="bi bi-<?= $meta['icon'] ?> text-<?= $meta['color'] ?> fs-5"></i>
-                                                                <span class="badge bg-<?= $meta['color'] ?> small"><?= $meta['label'] ?></span>
                                                                 <a href="<?= strpos($sp['moTataiLieu'],'http')===0
                                                                     ?htmlspecialchars($sp['moTataiLieu'])
                                                                     :_HOST_URL.'/'.htmlspecialchars($sp['moTataiLieu']) ?>"
@@ -784,12 +785,12 @@ layout('navbar');
                                                             <div class="d-flex align-items-center gap-3 mb-2">
                                                                 <i class="bi bi-<?= $info['icon'] ?> text-<?= $info['color'] ?> fs-4"></i>
                                                                 <div>
-                                                                    <span class="badge bg-<?= $info['color'] ?>"><?= $info['label'] ?></span>
                                                                     <span class="badge ms-1 bg-<?= $sp['TrangThai']=='Đã duyệt'?'success':'warning text-dark' ?>">
                                                                         <?= htmlspecialchars($sp['TrangThai']) ?>
                                                                     </span>
                                                                 </div>
                                                             </div>
+                                                            <p class="mb-1 fw-semibold small text-muted"><?= htmlspecialchars(basename($sp['moTataiLieu'])) ?></p>
                                                             <?php if (!empty($sp['tensanpham'])): ?>
                                                                 <p class="mb-1 fw-semibold"><?= htmlspecialchars($sp['tensanpham']) ?></p>
                                                             <?php endif; ?>
@@ -823,11 +824,11 @@ layout('navbar');
                                 <span class="detail-label">Sự kiện</span>
                                 <span class="detail-value">
                                     <a href="<?= _HOST_URL ?>?module=event&action=view&id=<?= $idSK ?>">
-                                        <?= htmlspecialchars($nhom['tenSK']) ?>
+                                        <?= htmlspecialchars($nhom['tenSK'] ?? '') ?>
                                     </a>
                                 </span>
                             </div>
-                            <div class="detail-row"><span class="detail-label">Nhóm trưởng</span><span class="detail-value"><?= htmlspecialchars($nhom['tenNhomTruong']) ?></span></div>
+                            <div class="detail-row"><span class="detail-label">Nhóm trưởng</span><span class="detail-value"><?= htmlspecialchars($nhom['tenNhomTruong'] ?? '') ?></span></div>
                             <div class="detail-row"><span class="detail-label">Thành viên</span><span class="detail-value"><?= $soThanhVien ?>/<?= $nhom['soluongtoida'] ?></span></div>
                             <div class="detail-row">
                                 <span class="detail-label">GVHD</span>
@@ -939,7 +940,7 @@ layout('navbar');
                 <div class="alert alert-warning d-flex align-items-start gap-2 mb-0">
                     <i class="bi bi-exclamation-triangle-fill fs-5 flex-shrink-0 mt-1"></i>
                     <div>
-                        Bạn có chắc muốn rời khỏi nhóm <strong><?= htmlspecialchars($nhom['tennhom']) ?></strong>?<br>
+                        Bạn có chắc muốn rời khỏi nhóm <strong><?= htmlspecialchars($nhom['tennhom'] ?? '') ?></strong>?<br>
                         <span class="small text-muted">Sau khi rời, bạn cần được mời lại hoặc xin vào nhóm mới để tham gia sự kiện.</span>
                     </div>
                 </div>

@@ -70,13 +70,27 @@ $active_vong = isset($_GET['vong']) ? (int)$_GET['vong'] : (!empty($vong_array) 
 $res_gv_all = mysqli_query($conn, "SELECT idGV, tenGV FROM giangvien ORDER BY tenGV ASC");
 $ds_giangvien = $res_gv_all ? mysqli_fetch_all($res_gv_all, MYSQLI_ASSOC) : [];
 
-$sql_sp = "SELECT sp.idSanPham, sp.tensanpham, n.manhom, ttn.tennhom 
+$sql_sp = "SELECT sp.idSanPham, sp.tensanpham, sp.TrangThai, sp.idNhom, n.manhom, ttn.tennhom 
            FROM sanpham sp 
            LEFT JOIN nhom n ON sp.idNhom = n.idnhom 
            LEFT JOIN thongtinnhom ttn ON n.idnhom = ttn.idnhom 
            WHERE sp.idSK = $id_su_kien ORDER BY sp.idSanPham DESC";
 $res_sp = mysqli_query($conn, $sql_sp);
 $ds_sanpham = $res_sp ? mysqli_fetch_all($res_sp, MYSQLI_ASSOC) : [];
+
+// Lay cac file da nop cho tung san pham
+$files_map = [];
+if (!empty($ds_sanpham)) {
+    $sp_ids = implode(',', array_column($ds_sanpham, 'idSanPham'));
+    $res_files = mysqli_query($conn, "SELECT sp.idSanPham, sp.moTataiLieu, sp.idloaitailieu, l.loaitailieu AS tenLoai 
+        FROM sanpham sp LEFT JOIN loaitailieu l ON sp.idloaitailieu = l.idtailieu 
+        WHERE sp.idSanPham IN ($sp_ids) AND sp.moTataiLieu IS NOT NULL AND sp.moTataiLieu != '' ");
+    if ($res_files) {
+        while ($fr = mysqli_fetch_assoc($res_files)) {
+            $files_map[$fr['idSanPham']][] = $fr;
+        }
+    }
+}
 
 $sql_pc = "SELECT pcd.*, gv.tenGV, v.tenVongThi FROM phancong_doclap pcd JOIN giangvien gv ON pcd.idGV = gv.idGV JOIN vongthi v ON pcd.idVongThi = v.idVongThi WHERE v.idSK = $id_su_kien";
 $res_pc = mysqli_query($conn, $sql_pc);
@@ -205,9 +219,9 @@ layout('header'); layout('navbar');
                                         <button class="btn btn-primary btn-action" data-bs-toggle="modal" data-bs-target="#mAssign_<?php echo $sp['idSanPham']; ?>">
                                             <i class="bi bi-person-plus-fill"></i> Phân công
                                         </button>
-                                        <a href="?module=event&action=view_product_detail&id=<?php echo $sp['idSanPham']; ?>" class="btn btn-primary btn-action ms-1">
+                                        <button class="btn btn-outline-primary btn-action ms-1" data-bs-toggle="modal" data-bs-target="#mViewSP_<?php echo $sp['idSanPham']; ?>">
                                             <i class="bi bi-eye"></i> Xem
-                                        </a>
+                                        </button>
                                     </td>
                                 </tr>
                             <?php endforeach; ?>
@@ -255,6 +269,67 @@ layout('header'); layout('navbar');
                             <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg me-1"></i> Lưu phân công</button>
                         </div>
                     </form>
+                </div>
+            </div>
+        </div>
+        <?php endforeach; ?>
+
+        <?php // ===== MODALS XEM SẢN PHẨM ===== 
+        foreach ($ds_sanpham as $sp):
+            $sp_files = $files_map[$sp['idSanPham']] ?? [];
+        ?>
+        <div class="modal fade" id="mViewSP_<?php echo $sp['idSanPham']; ?>" tabindex="-1">
+            <div class="modal-dialog modal-dialog-centered modal-lg">
+                <div class="modal-content border-0 shadow">
+                    <div class="modal-header" style="background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;">
+                        <h5 class="modal-title fw-bold"><i class="bi bi-file-earmark-text me-2"></i>Bài nộp của nhóm</h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body p-4">
+                        <div class="bg-light rounded p-3 mb-4 border">
+                            <div class="mb-1"><strong>Nhóm:</strong> <span class="text-primary"><?php echo htmlspecialchars($sp['tennhom'] ?: $sp['manhom']); ?></span></div>
+                            <div class="mb-1"><strong>Đề tài:</strong> <?php echo htmlspecialchars($sp['tensanpham']); ?></div>
+                            <div><strong>Trạng thái:</strong>
+                                <span class="badge ms-1 <?php echo $sp['TrangThai']=='Đã duyệt' ? 'bg-success' : 'bg-warning text-dark'; ?>">
+                                    <?php echo htmlspecialchars($sp['TrangThai'] ?? 'Chờ duyệt'); ?>
+                                </span>
+                            </div>
+                        </div>
+                        <?php if (empty($sp_files)): ?>
+                            <div class="text-center py-4 text-muted">
+                                <i class="bi bi-inbox fs-2 d-block mb-2"></i>
+                                Nhóm chưa nộp tài liệu nào.
+                            </div>
+                        <?php else: ?>
+                            <h6 class="fw-bold mb-3 text-secondary text-uppercase small">Tài liệu đã nộp</h6>
+                            <?php 
+                            $loai_info = [
+                                1 => ['icon'=>'bi-file-earmark-text', 'color'=>'text-primary', 'label'=>'Báo cáo tóm tắt'],
+                                2 => ['icon'=>'bi-file-earmark-richtext', 'color'=>'text-info', 'label'=>'Báo cáo toàn văn'],
+                                3 => ['icon'=>'bi-github', 'color'=>'text-dark', 'label'=>'Source Code'],
+                            ];
+                            foreach ($sp_files as $file): 
+                                $li = $loai_info[$file['idloaitailieu']] ?? ['icon'=>'bi-file-earmark', 'color'=>'text-secondary', 'label'=>$file['tenLoai']];
+                                $file_url = (strpos($file['moTataiLieu'],'http')===0) 
+                                    ? $file['moTataiLieu'] 
+                                    : _HOST_URL . '/' . $file['moTataiLieu'];
+                            ?>
+                            <div class="d-flex align-items-center gap-3 p-3 mb-2 border rounded bg-white">
+                                <i class="bi <?php echo $li['icon']; ?> <?php echo $li['color']; ?> fs-4"></i>
+                                <div class="flex-grow-1">
+                                    <div class="fw-semibold small"><?php echo htmlspecialchars($li['label']); ?></div>
+                                    <div class="text-muted small text-truncate"><?php echo htmlspecialchars(basename($file['moTataiLieu'])); ?></div>
+                                </div>
+                                <a href="<?php echo htmlspecialchars($file_url); ?>" target="_blank" class="btn btn-sm btn-outline-primary rounded-pill px-3">
+                                    <i class="bi bi-download me-1"></i>Tải xuống
+                                </a>
+                            </div>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
+                    </div>
+                    <div class="modal-footer border-0 bg-light">
+                        <button type="button" class="btn btn-secondary rounded-pill px-4" data-bs-dismiss="modal">Đóng</button>
+                    </div>
                 </div>
             </div>
         </div>

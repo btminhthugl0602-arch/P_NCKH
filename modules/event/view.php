@@ -85,18 +85,18 @@ if (isset($_POST['create_group']) && $userId > 0) {
     }
 }
 
-// ================== XỬ LÝ XIN VÀO NHÓM ==================
-if (isset($_POST['xin_vao_nhom']) && $userId > 0) {
+// ================== XỬ LÝ XIN VÀO NHÓM (AJAX) ==================
+if (isset($_POST['ajax_xin_vao_nhom']) && $userId > 0) {
+    header('Content-Type: application/json; charset=utf-8');
     $idNhomXin  = (int)($_POST['idNhom'] ?? 0);
     $loiNhanXin = trim($_POST['loiNhan'] ?? '');
     if ($idNhomXin > 0) {
         $result = gui_yeu_cau_nhom($conn, $idNhomXin, $userId, 1, $loiNhanXin);
-        $_SESSION['flash_msg']  = $result['status']
-            ? 'Đã gửi yêu cầu tham gia nhóm thành công! Chờ trưởng nhóm duyệt.'
-            : $result['message'];
-        $_SESSION['flash_type'] = $result['status'] ? 'success' : 'warning';
+    } else {
+        $result = ['status' => false, 'message' => 'Dữ liệu không hợp lệ'];
     }
-    header("Location: " . $_SERVER['REQUEST_URI']); exit();
+    echo json_encode($result, JSON_UNESCAPED_UNICODE);
+    exit();
 }
 
 // ================== LẤY TẤT CẢ NHÓM ==================
@@ -105,7 +105,7 @@ $sql_all = "
            COUNT(CASE WHEN tv.idvaitronhom != 3 THEN tv.idtk END) AS soThanhVien,
            COALESCE(sv.tenSV, gv.tenGV, tk_truong.tenTK, '') AS tenNhomTruong
     FROM nhom n
-    LEFT JOIN thongtinnhom  t         ON n.idnhom = t.idnhom
+    INNER JOIN thongtinnhom t         ON n.idnhom = t.idnhom
     LEFT JOIN thanhviennhom tv        ON n.idnhom = tv.idnhom AND tv.trangthai = 1
     LEFT JOIN taikhoan      tk_truong ON n.idnhomtruong = tk_truong.idTK
     LEFT JOIN sinhvien      sv        ON tk_truong.idTK = sv.idTK
@@ -480,23 +480,44 @@ layout('navbar');
                                                                                             <span class="instructor-name"><i class="bi bi-person-badge me-1"></i>Nhóm trưởng: <?= htmlspecialchars($g['tenNhomTruong']) ?></span>
                                                                                         </div>
                                                                                     <?php endif; ?>
-                                                                                    <div class="mt-2 d-flex gap-2 flex-wrap">
-                                                                                        <a href="<?= _HOST_URL ?>?module=event&action=chitiethom&id=<?= $g['idnhom'] ?>"
-                                                                                           class="btn-course">
-                                                                                            <i class="bi bi-eye me-1"></i>Xem nhóm
-                                                                                        </a>
+                                                                                    <div class="mt-2 d-flex gap-2 flex-wrap align-items-center">
                                                                                         <?php if ($isMyGroup): ?>
+                                                                                            <!-- Đã là thành viên: nút xem + badge đã tham gia -->
+                                                                                            <a href="<?= _HOST_URL ?>?module=event&action=chitiethom&id=<?= $g['idnhom'] ?>"
+                                                                                               class="btn-course">
+                                                                                                <i class="bi bi-eye me-1"></i>Xem nhóm
+                                                                                            </a>
                                                                                             <span class="btn-member"><i class="bi bi-check-circle-fill"></i> Đã tham gia</span>
                                                                                         <?php elseif ($isPending): ?>
+                                                                                            <!-- Đang chờ duyệt -->
+                                                                                            <a href="<?= _HOST_URL ?>?module=event&action=chitiethom&id=<?= $g['idnhom'] ?>"
+                                                                                               class="btn-course" style="background:#6b7280;">
+                                                                                                <i class="bi bi-eye me-1"></i>Xem nhóm
+                                                                                            </a>
                                                                                             <span class="btn-pending"><i class="bi bi-clock-history"></i> Đang chờ duyệt</span>
-                                                                                        <?php elseif (!$isFull && $g['dangtuyen'] && $userId > 0): ?>
-                                                                                            <button type="button" class="btn-course btn-outline-primary"
-                                                                                                style="background:transparent;color:#4f46e5;border:2px solid #4f46e5;"
-                                                                                                onclick="openJoinModal(<?= $g['idnhom'] ?>, '<?= htmlspecialchars(addslashes($g['tennhom'])) ?>')">
+                                                                                        <?php elseif ($isFull): ?>
+                                                                                            <!-- Nhóm đã đủ -->
+                                                                                            <a href="<?= _HOST_URL ?>?module=event&action=chitiethom&id=<?= $g['idnhom'] ?>"
+                                                                                               class="btn-course" style="background:#6b7280;">
+                                                                                                <i class="bi bi-eye me-1"></i>Xem nhóm
+                                                                                            </a>
+                                                                                            <span class="btn-course disabled" style="opacity:.6;cursor:not-allowed;background:#e5e7eb;color:#374151;">Đã đủ thành viên</span>
+                                                                                        <?php elseif ($userId > 0): ?>
+                                                                                            <!-- Chưa đầy + đã đăng nhập: luôn cho xin vào dù dangtuyen=0 -->
+                                                                                            <button type="button" class="btn-course"
+                                                                                                onclick="openJoinModal(<?= $g['idnhom'] ?>, '<?= htmlspecialchars(addslashes($g['tennhom'] ?? '')) ?>')">
                                                                                                 <i class="bi bi-person-plus me-1"></i>Xin vào nhóm
                                                                                             </button>
-                                                                                        <?php elseif ($isFull): ?>
-                                                                                            <span class="btn-course disabled" style="opacity:.6;cursor:not-allowed">Đã đủ thành viên</span>
+                                                                                            <a href="<?= _HOST_URL ?>?module=event&action=chitiethom&id=<?= $g['idnhom'] ?>"
+                                                                                               class="btn-course" style="background:transparent;color:#4f46e5;border:2px solid #4f46e5;">
+                                                                                                <i class="bi bi-eye me-1"></i>Xem nhóm
+                                                                                            </a>
+                                                                                        <?php else: ?>
+                                                                                            <!-- Chưa đăng nhập hoặc nhóm không mở -->
+                                                                                            <a href="<?= _HOST_URL ?>?module=event&action=chitiethom&id=<?= $g['idnhom'] ?>"
+                                                                                               class="btn-course">
+                                                                                                <i class="bi bi-eye me-1"></i>Xem nhóm
+                                                                                            </a>
                                                                                         <?php endif; ?>
                                                                                     </div>
                                                                                 </div>
@@ -799,28 +820,27 @@ layout('navbar');
 <div class="modal fade" id="joinGroupModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
-            <form method="POST">
-                <input type="hidden" name="xin_vao_nhom" value="1">
-                <input type="hidden" name="idNhom" id="joinGroupId" value="">
-                <div class="modal-header-grad d-flex justify-content-between align-items-center">
-                    <h5 class="modal-title mb-0"><i class="bi bi-person-plus me-2"></i>Xin vào nhóm</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            <div class="modal-header-grad d-flex justify-content-between align-items-center">
+                <h5 class="modal-title mb-0"><i class="bi bi-person-plus me-2"></i>Xin vào nhóm</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4">
+                <div class="join-modal-info mb-3">
+                    <i class="bi bi-info-circle-fill me-2"></i>
+                    Yêu cầu của bạn sẽ được gửi đến trưởng nhóm <strong id="joinGroupName"></strong> để xét duyệt.
                 </div>
-                <div class="modal-body p-4">
-                    <div class="join-modal-info mb-3">
-                        <i class="bi bi-info-circle-fill me-2"></i>
-                        Yêu cầu của bạn sẽ được gửi đến trưởng nhóm <strong id="joinGroupName"></strong> để xét duyệt.
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label fw-semibold">Lời nhắn gửi trưởng nhóm</label>
-                        <textarea name="loiNhan" class="form-control" rows="3" placeholder="Giới thiệu bản thân và lý do muốn tham gia nhóm..."></textarea>
-                    </div>
+                <div id="joinModalResult" style="display:none" class="mb-3"></div>
+                <div id="joinFormBody">
+                    <label class="form-label fw-semibold">Lời nhắn gửi trưởng nhóm</label>
+                    <textarea id="joinLoiNhan" class="form-control" rows="3" placeholder="Giới thiệu bản thân và lý do muốn tham gia nhóm..."></textarea>
                 </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Huỷ</button>
-                    <button type="submit" class="btn btn-primary"><i class="bi bi-send me-1"></i>Gửi yêu cầu</button>
-                </div>
-            </form>
+            </div>
+            <div class="modal-footer" id="joinModalFooter">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Huỷ</button>
+                <button type="button" class="btn btn-primary" id="btnGuiYeuCau" onclick="guiYeuCauThamGia()">
+                    <i class="bi bi-send me-1"></i>Gửi yêu cầu
+                </button>
+            </div>
         </div>
     </div>
 </div>
@@ -903,10 +923,73 @@ layout('navbar');
 <script>
 const AJAX_URL = window.location.href;
 
+let _joinNhomId = 0;
+
 function openJoinModal(idNhom, tenNhom) {
-    document.getElementById('joinGroupId').value = idNhom;
+    _joinNhomId = idNhom;
     document.getElementById('joinGroupName').textContent = tenNhom;
+    document.getElementById('joinLoiNhan').value = '';
+    document.getElementById('joinModalResult').style.display = 'none';
+    document.getElementById('joinFormBody').style.display = '';
+    document.getElementById('joinModalFooter').style.display = '';
     new bootstrap.Modal(document.getElementById('joinGroupModal')).show();
+}
+
+function guiYeuCauThamGia() {
+    const btn = document.getElementById('btnGuiYeuCau');
+    const loiNhan = document.getElementById('joinLoiNhan').value;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Đang gửi...';
+
+    fetch(AJAX_URL, {
+        method: 'POST',
+        body: new URLSearchParams({
+            ajax_xin_vao_nhom: '1',
+            idNhom: _joinNhomId,
+            loiNhan: loiNhan
+        })
+    })
+    .then(r => r.json())
+    .then(data => {
+        const resultEl = document.getElementById('joinModalResult');
+        resultEl.style.display = '';
+        if (data.status) {
+            // Ẩn form, hiện thông báo thành công
+            document.getElementById('joinFormBody').style.display = 'none';
+            document.getElementById('joinModalFooter').style.display = 'none';
+            resultEl.innerHTML = `
+                <div class="alert alert-success d-flex align-items-center gap-3 mb-0">
+                    <i class="bi bi-check-circle-fill fs-3 text-success"></i>
+                    <div>
+                        <div class="fw-bold">Gửi yêu cầu thành công!</div>
+                        <div class="small text-muted mt-1">Yêu cầu của bạn đã được ghi nhận. Vui lòng chờ trưởng nhóm xét duyệt.</div>
+                    </div>
+                </div>`;
+            // Cập nhật nút trên card -> "Đang chờ duyệt" (tìm card tương ứng)
+            document.querySelectorAll('#all-groups-grid .group-item').forEach(el => {
+                const btn2 = el.querySelector('button.btn-course');
+                if (btn2 && btn2.getAttribute('onclick')?.includes('openJoinModal(' + _joinNhomId + ',')) {
+                    const div = btn2.closest('.mt-2');
+                    div.innerHTML = `
+                        <span class="btn-pending"><i class="bi bi-clock-history"></i> Đang chờ duyệt</span>
+                        <a href="<?= _HOST_URL ?>?module=event&action=chitiethom&id=${_joinNhomId}"
+                           class="btn-course" style="background:#6b7280;">
+                            <i class="bi bi-eye me-1"></i>Xem nhóm
+                        </a>`;
+                }
+            });
+        } else {
+            resultEl.innerHTML = `<div class="alert alert-warning mb-0"><i class="bi bi-exclamation-triangle me-2"></i>${escHtml(data.message)}</div>`;
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-send me-1"></i>Gửi yêu cầu';
+        }
+    })
+    .catch(() => {
+        document.getElementById('joinModalResult').style.display = '';
+        document.getElementById('joinModalResult').innerHTML = '<div class="alert alert-danger mb-0">Lỗi kết nối, vui lòng thử lại.</div>';
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-send me-1"></i>Gửi yêu cầu';
+    });
 }
 
 // ---- Tìm kiếm & lọc nhóm ----
