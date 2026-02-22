@@ -9,10 +9,40 @@ require_once _PATH_URL . '/modules/functions/quan_ly_nhom.php';
 require_once _PATH_URL . '/modules/functions/base.php';
 
 $id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
-if ($id <= 0) { require_once _PATH_URL . '/modules/errors/404.php'; exit; }
+if ($id <= 0) {
+    require_once _PATH_URL . '/modules/errors/404.php';
+    exit;
+}
 
 $event = btc_lay_chi_tiet_su_kien($conn, $id);
-if (!$event) { require_once _PATH_URL . '/modules/errors/404.php'; exit; }
+if (!$event) {
+    require_once _PATH_URL . '/modules/errors/404.php';
+    exit;
+}
+
+// ===== ĐIỂM DANH: Phát hiện phiên đang mở (từ Bonjour) =====
+$phien_dang_mo = null;
+$da_diemdanh   = false;
+$res_phien = mysqli_query(
+    $conn,
+    "SELECT * FROM lichtrinh
+     WHERE idSK = $id
+       AND thoiGianMoDiemDanh IS NOT NULL
+       AND NOW() BETWEEN thoiGianMoDiemDanh AND thoiGianDongDiemDanh
+     LIMIT 1"
+);
+if ($res_phien && mysqli_num_rows($res_phien) > 0) {
+    $phien_dang_mo = mysqli_fetch_assoc($res_phien);
+    if (isset($_SESSION['user_id']) && $_SESSION['user_id'] > 0) {
+        $idLichMo  = (int)$phien_dang_mo['idLichTrinh'];
+        $res_check = mysqli_query(
+            $conn,
+            "SELECT 1 FROM diemdanh WHERE idLichTrinh=$idLichMo AND idTK={$_SESSION['user_id']} LIMIT 1"
+        );
+        $da_diemdanh = ($res_check && mysqli_num_rows($res_check) > 0);
+    }
+}
+// ===== END ĐIỂM DANH =====
 
 $userId = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
 
@@ -81,25 +111,27 @@ if (isset($_POST['create_group']) && $userId > 0) {
             $_SESSION['flash_msg']  = $result['message'];
             $_SESSION['flash_type'] = 'danger';
         }
-        header("Location: " . $_SERVER['REQUEST_URI']); exit();
+        header("Location: " . $_SERVER['REQUEST_URI']);
+        exit();
     }
 }
 
-// ================== XỬ LÝ XIN VÀO NHÓM (AJAX) ==================
-if (isset($_POST['ajax_xin_vao_nhom']) && $userId > 0) {
-    header('Content-Type: application/json; charset=utf-8');
+// ================== XỬ LÝ XIN VÀO NHÓM (P_NCKH: Form POST + redirect) ==================
+if (isset($_POST['xin_vao_nhom']) && $userId > 0) {
     $idNhomXin  = (int)($_POST['idNhom'] ?? 0);
     $loiNhanXin = trim($_POST['loiNhan'] ?? '');
     if ($idNhomXin > 0) {
         $result = gui_yeu_cau_nhom($conn, $idNhomXin, $userId, 1, $loiNhanXin);
-    } else {
-        $result = ['status' => false, 'message' => 'Dữ liệu không hợp lệ'];
+        $_SESSION['flash_msg']  = $result['status']
+            ? 'Đã gửi yêu cầu tham gia nhóm thành công! Chờ trưởng nhóm duyệt.'
+            : $result['message'];
+        $_SESSION['flash_type'] = $result['status'] ? 'success' : 'warning';
     }
-    echo json_encode($result, JSON_UNESCAPED_UNICODE);
+    header("Location: " . $_SERVER['REQUEST_URI']);
     exit();
 }
 
-// ================== LẤY TẤT CẢ NHÓM ==================
+// ================== LẤY TẤT CẢ NHÓM (P_NCKH: INNER JOIN) ==================
 $sql_all = "
     SELECT n.idnhom, t.tennhom, t.mota, t.soluongtoida, t.dangtuyen,
            COUNT(CASE WHEN tv.idvaitronhom != 3 THEN tv.idtk END) AS soThanhVien,
@@ -155,12 +187,14 @@ if ($userId > 0) {
 
     foreach ($myGroups as &$g) {
         $gId = $g['idnhom'];
-        $res_sp = mysqli_query($conn,
+        $res_sp = mysqli_query(
+            $conn,
             "SELECT sp.*, l.loaitailieu AS tenLoaiTL
             FROM sanpham sp
             LEFT JOIN loaitailieu l ON sp.idloaitailieu = l.idtailieu
             WHERE sp.idNhom = $gId AND sp.idSK = $id
-            ORDER BY sp.idloaitailieu ASC");
+            ORDER BY sp.idloaitailieu ASC"
+        );
         $spRows = $res_sp ? mysqli_fetch_all($res_sp, MYSQLI_ASSOC) : [];
         $g['sanPhamTheoLoai'] = [];
         foreach ($spRows as $row) {
@@ -237,70 +271,346 @@ layout('navbar');
 ?>
 
 <style>
-/* ===== MY GROUP CARDS ===== */
-.my-groups-topbar { display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; gap:12px; flex-wrap:wrap; padding-top:16px; }
+    /* ===== MY GROUP CARDS ===== */
+    .my-groups-topbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+        gap: 12px;
+        flex-wrap: wrap;
+        padding-top: 16px;
+    }
 
-.nhom-card { background:#fff; border-radius:14px; padding:20px; margin-bottom:18px; border:2px solid #eef0f5; box-shadow:0 2px 10px rgba(0,0,0,.05); transition:box-shadow .2s,border-color .2s; }
-.nhom-card:hover { box-shadow:0 6px 24px rgba(0,0,0,.10); border-color:#c5cef8; }
-.nhom-card-header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:10px; flex-wrap:wrap; gap:6px; }
-.nhom-card-header h5 { font-size:17px; font-weight:700; color:#1a1f36; margin:0; }
+    .nhom-card {
+        background: #fff;
+        border-radius: 14px;
+        padding: 20px;
+        margin-bottom: 18px;
+        border: 2px solid #eef0f5;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, .05);
+        transition: box-shadow .2s, border-color .2s;
+    }
 
-.badge-cong-khai { background:#e6f9ee; color:#16a34a; border:1px solid #bbf7d0; border-radius:20px; padding:3px 12px; font-size:12px; font-weight:600; }
-.badge-rieng-tu  { background:#fff7e6; color:#d97706; border:1px solid #fde68a; border-radius:20px; padding:3px 12px; font-size:12px; font-weight:600; }
+    .nhom-card:hover {
+        box-shadow: 0 6px 24px rgba(0, 0, 0, .10);
+        border-color: #c5cef8;
+    }
 
-.gvhd-row { background:#4f46e5; color:#fff; border-radius:8px; padding:7px 14px; font-size:13px; font-weight:600; display:inline-flex; align-items:center; gap:6px; margin-bottom:10px; }
-.gvhd-alert { background:#fffbeb; border:1px solid #fcd34d; border-radius:8px; padding:10px 14px; font-size:13px; color:#92400e; display:flex; align-items:center; gap:8px; margin-bottom:10px; }
+    .nhom-card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 10px;
+        flex-wrap: wrap;
+        gap: 6px;
+    }
 
-.nhom-detai { font-size:13px; color:#555; margin-bottom:12px; }
-.nhom-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
-.btn-nhom { display:inline-flex; align-items:center; gap:5px; padding:7px 14px; border-radius:8px; font-size:13px; font-weight:600; border:none; cursor:pointer; transition:opacity .2s,transform .1s; text-decoration:none; }
-.btn-nhom:hover { opacity:.88; transform:translateY(-1px); }
-.btn-nhom-view { background:linear-gradient(135deg,#4f46e5,#7c3aed); color:#fff; }
+    .nhom-card-header h5 {
+        font-size: 17px;
+        font-weight: 700;
+        color: #1a1f36;
+        margin: 0;
+    }
 
-/* Modal header gradient */
-.modal-header-grad { background:linear-gradient(135deg,#4f46e5,#7c3aed); color:#fff; border-radius:12px 12px 0 0; padding:16px 20px; }
-.modal-header-grad .btn-close { filter:brightness(0) invert(1); }
-.modal-content { border-radius:12px; border:none; }
+    .badge-cong-khai {
+        background: #e6f9ee;
+        color: #16a34a;
+        border: 1px solid #bbf7d0;
+        border-radius: 20px;
+        padding: 3px 12px;
+        font-size: 12px;
+        font-weight: 600;
+    }
 
-/* ===== LỜI MỜI NHÓM ===== */
-.lm-empty { text-align:center; padding:60px 20px; color:#9ca3af; }
-.lm-empty i { font-size:56px; color:#c7d2fe; }
+    .badge-rieng-tu {
+        background: #fff7e6;
+        color: #d97706;
+        border: 1px solid #fde68a;
+        border-radius: 20px;
+        padding: 3px 12px;
+        font-size: 12px;
+        font-weight: 600;
+    }
 
-.lm-card { background:#fff; border:2px solid #eef0f5; border-radius:14px; padding:18px; transition:box-shadow .2s, border-color .2s; }
-.lm-card:hover { box-shadow:0 6px 20px rgba(0,0,0,.08); border-color:#c5cef8; }
-.lm-card-header { display:flex; align-items:center; gap:12px; margin-bottom:12px; }
-.lm-icon { width:44px; height:44px; border-radius:12px; background:linear-gradient(135deg,#4f46e5,#7c3aed); display:flex; align-items:center; justify-content:center; flex-shrink:0; }
-.lm-icon i { font-size:20px; color:#fff; }
-.lm-info { flex:1; min-width:0; }
-.lm-info h6 { font-size:15px; font-weight:700; color:#1a1f36; margin:0 0 3px 0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.lm-meta { font-size:12px; color:#6b7280; }
-.lm-count { background:#f1f3fb; color:#4f46e5; font-size:12px; font-weight:700; padding:4px 10px; border-radius:20px; white-space:nowrap; }
+    .gvhd-row {
+        background: #4f46e5;
+        color: #fff;
+        border-radius: 8px;
+        padding: 7px 14px;
+        font-size: 13px;
+        font-weight: 600;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        margin-bottom: 10px;
+    }
 
-.lm-loinhan { background:#faf5ff; border-left:3px solid #7c3aed; border-radius:0 8px 8px 0; padding:8px 12px; font-size:13px; color:#5b21b6; font-style:italic; margin-bottom:8px; }
-.lm-time { font-size:12px; color:#9ca3af; margin-bottom:14px; }
-.lm-actions { display:flex; gap:8px; }
-.btn-lm { display:inline-flex; align-items:center; gap:5px; padding:8px 18px; border-radius:8px; font-size:13px; font-weight:600; border:none; cursor:pointer; transition:opacity .2s, transform .1s; flex:1; justify-content:center; }
-.btn-lm:hover { opacity:.88; transform:translateY(-1px); }
-.btn-lm-accept  { background:linear-gradient(135deg,#16a34a,#15803d); color:#fff; }
-.btn-lm-decline { background:#fff; color:#dc2626; border:2px solid #fca5a5; }
+    .gvhd-alert {
+        background: #fffbeb;
+        border: 1px solid #fcd34d;
+        border-radius: 8px;
+        padding: 10px 14px;
+        font-size: 13px;
+        color: #92400e;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 10px;
+    }
 
-/* Join request modal */
-.join-modal-info { background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; padding:10px 14px; font-size:13px; color:#1e40af; margin-bottom:16px; }
+    .nhom-detai {
+        font-size: 13px;
+        color: #555;
+        margin-bottom: 12px;
+    }
 
-/* Status badges */
-.btn-pending { background:#f3f4f6; color:#6b7280; border:1px solid #d1d5db; border-radius:8px; padding:6px 14px; font-size:13px; font-weight:600; cursor:not-allowed; display:inline-flex; align-items:center; gap:5px; }
-.btn-member  { background:#e6f9ee; color:#16a34a; border:1px solid #bbf7d0; border-radius:8px; padding:6px 14px; font-size:13px; font-weight:600; cursor:not-allowed; display:inline-flex; align-items:center; gap:5px; }
+    .nhom-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 12px;
+    }
+
+    .btn-nhom {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        padding: 7px 14px;
+        border-radius: 8px;
+        font-size: 13px;
+        font-weight: 600;
+        border: none;
+        cursor: pointer;
+        transition: opacity .2s, transform .1s;
+        text-decoration: none;
+    }
+
+    .btn-nhom:hover {
+        opacity: .88;
+        transform: translateY(-1px);
+    }
+
+    .btn-nhom-view {
+        background: linear-gradient(135deg, #4f46e5, #7c3aed);
+        color: #fff;
+    }
+
+    /* Modal header gradient */
+    .modal-header-grad {
+        background: linear-gradient(135deg, #4f46e5, #7c3aed);
+        color: #fff;
+        border-radius: 12px 12px 0 0;
+        padding: 16px 20px;
+    }
+
+    .modal-header-grad .btn-close {
+        filter: brightness(0) invert(1);
+    }
+
+    .modal-content {
+        border-radius: 12px;
+        border: none;
+    }
+
+    /* ===== LỜI MỜI NHÓM ===== */
+    .lm-empty {
+        text-align: center;
+        padding: 60px 20px;
+        color: #9ca3af;
+    }
+
+    .lm-empty i {
+        font-size: 56px;
+        color: #c7d2fe;
+    }
+
+    .lm-card {
+        background: #fff;
+        border: 2px solid #eef0f5;
+        border-radius: 14px;
+        padding: 18px;
+        transition: box-shadow .2s, border-color .2s;
+    }
+
+    .lm-card:hover {
+        box-shadow: 0 6px 20px rgba(0, 0, 0, .08);
+        border-color: #c5cef8;
+    }
+
+    .lm-card-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 12px;
+    }
+
+    .lm-icon {
+        width: 44px;
+        height: 44px;
+        border-radius: 12px;
+        background: linear-gradient(135deg, #4f46e5, #7c3aed);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+    }
+
+    .lm-icon i {
+        font-size: 20px;
+        color: #fff;
+    }
+
+    .lm-info {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .lm-info h6 {
+        font-size: 15px;
+        font-weight: 700;
+        color: #1a1f36;
+        margin: 0 0 3px 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .lm-meta {
+        font-size: 12px;
+        color: #6b7280;
+    }
+
+    .lm-count {
+        background: #f1f3fb;
+        color: #4f46e5;
+        font-size: 12px;
+        font-weight: 700;
+        padding: 4px 10px;
+        border-radius: 20px;
+        white-space: nowrap;
+    }
+
+    .lm-loinhan {
+        background: #faf5ff;
+        border-left: 3px solid #7c3aed;
+        border-radius: 0 8px 8px 0;
+        padding: 8px 12px;
+        font-size: 13px;
+        color: #5b21b6;
+        font-style: italic;
+        margin-bottom: 8px;
+    }
+
+    .lm-time {
+        font-size: 12px;
+        color: #9ca3af;
+        margin-bottom: 14px;
+    }
+
+    .lm-actions {
+        display: flex;
+        gap: 8px;
+    }
+
+    .btn-lm {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        padding: 8px 18px;
+        border-radius: 8px;
+        font-size: 13px;
+        font-weight: 600;
+        border: none;
+        cursor: pointer;
+        transition: opacity .2s, transform .1s;
+        flex: 1;
+        justify-content: center;
+    }
+
+    .btn-lm:hover {
+        opacity: .88;
+        transform: translateY(-1px);
+    }
+
+    .btn-lm-accept {
+        background: linear-gradient(135deg, #16a34a, #15803d);
+        color: #fff;
+    }
+
+    .btn-lm-decline {
+        background: #fff;
+        color: #dc2626;
+        border: 2px solid #fca5a5;
+    }
+
+    /* Join request modal */
+    .join-modal-info {
+        background: #eff6ff;
+        border: 1px solid #bfdbfe;
+        border-radius: 8px;
+        padding: 10px 14px;
+        font-size: 13px;
+        color: #1e40af;
+        margin-bottom: 16px;
+    }
+
+    /* Status badges */
+    .btn-pending {
+        background: #f3f4f6;
+        color: #6b7280;
+        border: 1px solid #d1d5db;
+        border-radius: 8px;
+        padding: 6px 14px;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: not-allowed;
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+    }
+
+    .btn-member {
+        background: #e6f9ee;
+        color: #16a34a;
+        border: 1px solid #bbf7d0;
+        border-radius: 8px;
+        padding: 6px 14px;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: not-allowed;
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+    }
+
+    /* ===== ĐIỂM DANH: badge nhấp nháy ===== */
+    @keyframes pulse-badge {
+
+        0%,
+        100% {
+            opacity: 1;
+        }
+
+        50% {
+            opacity: .45;
+        }
+    }
+
+    .animate-pulse {
+        animation: pulse-badge 1.4s ease-in-out infinite;
+    }
 </style>
 
 <main class="main">
 
     <?php if ($flashMsg): ?>
-    <div class="container pt-3">
-        <div class="alert alert-<?= $flashType ?> alert-dismissible fade show" role="alert">
-            <?= htmlspecialchars($flashMsg) ?>
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        <div class="container pt-3">
+            <div class="alert alert-<?= $flashType ?> alert-dismissible fade show" role="alert">
+                <?= htmlspecialchars($flashMsg) ?>
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
         </div>
-    </div>
     <?php endif; ?>
 
     <div class="page-title light-background">
@@ -329,7 +639,8 @@ layout('navbar');
                             <h1><?= htmlspecialchars($event['tenSK']) ?></h1>
                             <p class="course-subtitle"><?= nl2br(htmlspecialchars($event['moTa'])) ?></p>
                             <div class="instructor-card">
-                                <img src="<?= _HOST_URL_TEMPLATES ?>/assets/img/person/person-m-8.webp" alt="Instructor" class="instructor-image">
+                                <img src="<?= _HOST_URL_TEMPLATES ?>/assets/img/person/person-m-8.webp" alt="Instructor"
+                                    class="instructor-image">
                                 <div class="instructor-details">
                                     <h5>Hội đồng tổ chức</h5>
                                     <span><?= htmlspecialchars($event['nguoiTaoTen'] ?? 'BTC') ?></span>
@@ -342,7 +653,8 @@ layout('navbar');
                             </div>
                         </div>
                         <div class="hero-image">
-                            <img src="<?= _HOST_URL_TEMPLATES ?>/assets/img/education/courses-8.webp" alt="Ảnh sự kiện" class="img-fluid">
+                            <img src="<?= _HOST_URL_TEMPLATES ?>/assets/img/education/courses-8.webp" alt="Ảnh sự kiện"
+                                class="img-fluid">
                             <div class="play-overlay">
                                 <button class="play-btn"><i class="bi bi-play-fill"></i></button>
                                 <span>Ảnh sự kiện</span>
@@ -353,30 +665,50 @@ layout('navbar');
                     <div class="course-nav-tabs" data-aos="fade-up" data-aos-delay="300">
                         <ul class="nav nav-tabs" id="EventDetails" role="tablist">
                             <li class="nav-item">
-                                <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#event-info" type="button">
+                                <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#event-info"
+                                    type="button">
                                     <i class="bi bi-layout-text-window-reverse"></i> Thông tin
                                 </button>
                             </li>
                             <li class="nav-item">
-                                <button class="nav-link" data-bs-toggle="tab" data-bs-target="#event-groups" type="button">
+                                <button class="nav-link" data-bs-toggle="tab" data-bs-target="#event-groups"
+                                    type="button">
                                     <i class="bi bi-list-ul"></i> Nhóm thi
                                 </button>
                             </li>
 
+                            <?php if ($userId > 0): ?>
+                                <!-- TAB ĐIỂM DANH với badge động (từ Bonjour) -->
+                                <li class="nav-item">
+                                    <button class="nav-link <?= $phien_dang_mo ? 'fw-bold text-success' : '' ?>"
+                                        data-bs-toggle="tab" data-bs-target="#event-attendance" type="button">
+                                        <i class="bi bi-person-check<?= $phien_dang_mo ? '-fill' : '' ?>"></i>
+                                        Điểm danh
+                                        <?php if ($phien_dang_mo && !$da_diemdanh): ?>
+                                            <span class="badge bg-danger ms-1 animate-pulse" style="font-size:.6rem">MỞ</span>
+                                        <?php elseif ($phien_dang_mo && $da_diemdanh): ?>
+                                            <span class="badge bg-success ms-1" style="font-size:.6rem">✓</span>
+                                        <?php endif; ?>
+                                    </button>
+                                </li>
+                            <?php endif; ?>
+
                             <?php if ($is_btc): ?>
-                            <li class="nav-item">
-                                <button class="nav-link fw-bold text-primary" data-bs-toggle="tab" data-bs-target="#event-config" type="button">
-                                    <i class="bi bi-gear-fill"></i> Cấu hình sự kiện
-                                </button>
-                            </li>
+                                <li class="nav-item">
+                                    <button class="nav-link fw-bold text-primary" data-bs-toggle="tab"
+                                        data-bs-target="#event-config" type="button">
+                                        <i class="bi bi-gear-fill"></i> Cấu hình sự kiện
+                                    </button>
+                                </li>
                             <?php endif; ?>
 
                             <?php if ($is_btc || $is_giangvien): ?>
-                            <li class="nav-item">
-                                <button class="nav-link fw-bold text-success" data-bs-toggle="tab" data-bs-target="#event-grading" type="button">
-                                    <i class="bi bi-briefcase-fill"></i> Khu vực Giám khảo
-                                </button>
-                            </li>
+                                <li class="nav-item">
+                                    <button class="nav-link fw-bold text-success" data-bs-toggle="tab"
+                                        data-bs-target="#event-grading" type="button">
+                                        <i class="bi bi-briefcase-fill"></i> Khu vực Giám khảo
+                                    </button>
+                                </li>
                             <?php endif; ?>
                         </ul>
 
@@ -391,10 +723,18 @@ layout('navbar');
                                 <div class="requirements-section mt-4">
                                     <h3>Thông tin thời gian</h3>
                                     <ul class="requirements-list">
-                                        <li><i class="bi bi-check2"></i><strong>Mở đăng ký:</strong> <?= $event['ngayMoDangKy'] ? date('d/m/Y H:i', strtotime($event['ngayMoDangKy'])) : '—' ?></li>
-                                        <li><i class="bi bi-check2"></i><strong>Đóng đăng ký:</strong> <?= $event['ngayDongDangKy'] ? date('d/m/Y H:i', strtotime($event['ngayDongDangKy'])) : '—' ?></li>
-                                        <li><i class="bi bi-check2"></i><strong>Bắt đầu:</strong> <?= $event['ngayBatDau'] ? date('d/m/Y H:i', strtotime($event['ngayBatDau'])) : '—' ?></li>
-                                        <li><i class="bi bi-check2"></i><strong>Kết thúc:</strong> <?= $event['ngayKetThuc'] ? date('d/m/Y H:i', strtotime($event['ngayKetThuc'])) : '—' ?></li>
+                                        <li><i class="bi bi-check2"></i><strong>Mở đăng ký:</strong>
+                                            <?= $event['ngayMoDangKy'] ? date('d/m/Y H:i', strtotime($event['ngayMoDangKy'])) : '—' ?>
+                                        </li>
+                                        <li><i class="bi bi-check2"></i><strong>Đóng đăng ký:</strong>
+                                            <?= $event['ngayDongDangKy'] ? date('d/m/Y H:i', strtotime($event['ngayDongDangKy'])) : '—' ?>
+                                        </li>
+                                        <li><i class="bi bi-check2"></i><strong>Bắt đầu:</strong>
+                                            <?= $event['ngayBatDau'] ? date('d/m/Y H:i', strtotime($event['ngayBatDau'])) : '—' ?>
+                                        </li>
+                                        <li><i class="bi bi-check2"></i><strong>Kết thúc:</strong>
+                                            <?= $event['ngayKetThuc'] ? date('d/m/Y H:i', strtotime($event['ngayKetThuc'])) : '—' ?>
+                                        </li>
                                     </ul>
                                 </div>
                             </div>
@@ -404,13 +744,15 @@ layout('navbar');
                                 <div class="course-nav-tabs mt-3">
                                     <ul class="nav nav-tabs" id="GroupTabs" role="tablist">
                                         <li class="nav-item">
-                                            <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#all-groups" type="button">
+                                            <button class="nav-link active" data-bs-toggle="tab"
+                                                data-bs-target="#all-groups" type="button">
                                                 <i class="bi bi-grid"></i> Tất cả nhóm
                                                 <span class="badge bg-secondary ms-1"><?= count($groups) ?></span>
                                             </button>
                                         </li>
                                         <li class="nav-item">
-                                            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#my-groups" type="button">
+                                            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#my-groups"
+                                                type="button">
                                                 <i class="bi bi-person-check"></i> Nhóm của tôi
                                                 <?php if (!empty($myGroups)): ?>
                                                     <span class="badge bg-primary ms-1"><?= count($myGroups) ?></span>
@@ -418,7 +760,8 @@ layout('navbar');
                                             </button>
                                         </li>
                                         <li class="nav-item">
-                                            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#loi-moi" type="button">
+                                            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#loi-moi"
+                                                type="button">
                                                 <i class="bi bi-envelope"></i> Lời mời nhóm
                                                 <?php if ($soLoiMoi > 0): ?>
                                                     <span class="badge bg-danger ms-1"><?= $soLoiMoi ?></span>
@@ -433,103 +776,108 @@ layout('navbar');
                                         <div class="tab-pane fade show active" id="all-groups" role="tabpanel">
                                             <section class="courses-2 section">
                                                 <div class="container" data-aos="fade-up" data-aos-delay="100">
-                                                    <div class="row"><div class="col-lg-12">
-                                                        <div class="courses-header" data-aos="fade-left" data-aos-delay="100">
-                                                            <div class="search-box">
-                                                                <i class="bi bi-search"></i>
-                                                                <input type="text" id="search-all-groups" placeholder="Tìm kiếm nhóm...">
+                                                    <div class="row">
+                                                        <div class="col-lg-12">
+                                                            <div class="courses-header" data-aos="fade-left"
+                                                                data-aos-delay="100">
+                                                                <div class="search-box">
+                                                                    <i class="bi bi-search"></i>
+                                                                    <input type="text" id="search-all-groups"
+                                                                        placeholder="Tìm kiếm nhóm...">
+                                                                </div>
+                                                                <div class="sort-dropdown">
+                                                                    <select id="sort-all-groups">
+                                                                        <option value="">Sắp xếp: Tất cả</option>
+                                                                        <option value="dang_tuyen">Đang tuyển</option>
+                                                                        <option value="day">Đã đủ thành viên</option>
+                                                                    </select>
+                                                                </div>
                                                             </div>
-                                                            <div class="sort-dropdown">
-                                                                <select id="sort-all-groups">
-                                                                    <option value="">Sắp xếp: Tất cả</option>
-                                                                    <option value="dang_tuyen">Đang tuyển</option>
-                                                                    <option value="day">Đã đủ thành viên</option>
-                                                                </select>
-                                                            </div>
-                                                        </div>
-                                                        <div class="courses-grid" data-aos="fade-up" data-aos-delay="200">
-                                                            <div class="row" id="all-groups-grid">
-                                                                <?php if (!empty($groups)): ?>
-                                                                    <?php foreach ($groups as $g): ?>
-                                                                        <?php
-                                                                        $isFull    = $g['soluongtoida'] > 0 && $g['soThanhVien'] >= $g['soluongtoida'];
-                                                                        $isMyGroup = in_array($g['idnhom'], $myGroupIds);
-                                                                        $isPending = in_array($g['idnhom'], $pendingGroupIds);
-                                                                        ?>
-                                                                        <div class="col-lg-6 col-md-6 group-item"
-                                                                            data-tuyen="<?= $g['dangtuyen'] ? '1' : '0' ?>"
-                                                                            data-ten="<?= htmlspecialchars(strtolower($g['tennhom'] ?? '')) ?>">
-                                                                            <div class="course-card">
-                                                                                <div class="course-image">
-                                                                                    <img src="<?= _HOST_URL_TEMPLATES ?>/assets/img/education/courses-3.webp" alt="Nhóm" class="img-fluid">
-                                                                                    <?php if ($isFull): ?>
-                                                                                        <div class="course-badge">Đã đủ thành viên</div>
-                                                                                    <?php elseif ($g['dangtuyen']): ?>
-                                                                                        <div class="course-badge badge-free">Đang tuyển</div>
-                                                                                    <?php endif; ?>
-                                                                                    <div class="course-price"><?= $g['soThanhVien'] ?>/<?= $g['soluongtoida'] ?></div>
-                                                                                </div>
-                                                                                <div class="course-content">
-                                                                                    <h3><?= htmlspecialchars($g['tennhom'] ?? '') ?></h3>
-                                                                                    <p class="text-muted small mb-1"><?= htmlspecialchars($g['mota'] ?? 'Chưa có mô tả') ?></p>
-                                                                                    <div class="course-stats">
-                                                                                        <div class="stat"><i class="bi bi-people"></i><span><?= $g['soThanhVien'] ?>/<?= $g['soluongtoida'] ?> thành viên</span></div>
-                                                                                    </div>
-                                                                                    <?php if (!empty($g['tenNhomTruong'])): ?>
-                                                                                        <div class="instructor-info mt-2">
-                                                                                            <span class="instructor-name"><i class="bi bi-person-badge me-1"></i>Nhóm trưởng: <?= htmlspecialchars($g['tenNhomTruong']) ?></span>
-                                                                                        </div>
-                                                                                    <?php endif; ?>
-                                                                                    <div class="mt-2 d-flex gap-2 flex-wrap align-items-center">
-                                                                                        <?php if ($isMyGroup): ?>
-                                                                                            <!-- Đã là thành viên: nút xem + badge đã tham gia -->
-                                                                                            <a href="<?= _HOST_URL ?>?module=event&action=chitiethom&id=<?= $g['idnhom'] ?>"
-                                                                                               class="btn-course">
-                                                                                                <i class="bi bi-eye me-1"></i>Xem nhóm
-                                                                                            </a>
-                                                                                            <span class="btn-member"><i class="bi bi-check-circle-fill"></i> Đã tham gia</span>
-                                                                                        <?php elseif ($isPending): ?>
-                                                                                            <!-- Đang chờ duyệt -->
-                                                                                            <a href="<?= _HOST_URL ?>?module=event&action=chitiethom&id=<?= $g['idnhom'] ?>"
-                                                                                               class="btn-course" style="background:#6b7280;">
-                                                                                                <i class="bi bi-eye me-1"></i>Xem nhóm
-                                                                                            </a>
-                                                                                            <span class="btn-pending"><i class="bi bi-clock-history"></i> Đang chờ duyệt</span>
-                                                                                        <?php elseif ($isFull): ?>
-                                                                                            <!-- Nhóm đã đủ -->
-                                                                                            <a href="<?= _HOST_URL ?>?module=event&action=chitiethom&id=<?= $g['idnhom'] ?>"
-                                                                                               class="btn-course" style="background:#6b7280;">
-                                                                                                <i class="bi bi-eye me-1"></i>Xem nhóm
-                                                                                            </a>
-                                                                                            <span class="btn-course disabled" style="opacity:.6;cursor:not-allowed;background:#e5e7eb;color:#374151;">Đã đủ thành viên</span>
-                                                                                        <?php elseif ($userId > 0): ?>
-                                                                                            <!-- Chưa đầy + đã đăng nhập: luôn cho xin vào dù dangtuyen=0 -->
-                                                                                            <button type="button" class="btn-course"
-                                                                                                onclick="openJoinModal(<?= $g['idnhom'] ?>, '<?= htmlspecialchars(addslashes($g['tennhom'] ?? '')) ?>')">
-                                                                                                <i class="bi bi-person-plus me-1"></i>Xin vào nhóm
-                                                                                            </button>
-                                                                                            <a href="<?= _HOST_URL ?>?module=event&action=chitiethom&id=<?= $g['idnhom'] ?>"
-                                                                                               class="btn-course" style="background:transparent;color:#4f46e5;border:2px solid #4f46e5;">
-                                                                                                <i class="bi bi-eye me-1"></i>Xem nhóm
-                                                                                            </a>
-                                                                                        <?php else: ?>
-                                                                                            <!-- Chưa đăng nhập hoặc nhóm không mở -->
-                                                                                            <a href="<?= _HOST_URL ?>?module=event&action=chitiethom&id=<?= $g['idnhom'] ?>"
-                                                                                               class="btn-course">
-                                                                                                <i class="bi bi-eye me-1"></i>Xem nhóm
-                                                                                            </a>
+                                                            <div class="courses-grid" data-aos="fade-up"
+                                                                data-aos-delay="200">
+                                                                <div class="row" id="all-groups-grid">
+                                                                    <?php if (!empty($groups)): ?>
+                                                                        <?php foreach ($groups as $g): ?>
+                                                                            <?php
+                                                                            $isFull    = $g['soluongtoida'] > 0 && $g['soThanhVien'] >= $g['soluongtoida'];
+                                                                            $isMyGroup = in_array($g['idnhom'], $myGroupIds);
+                                                                            $isPending = in_array($g['idnhom'], $pendingGroupIds);
+                                                                            ?>
+                                                                            <div class="col-lg-6 col-md-6 group-item"
+                                                                                data-tuyen="<?= $g['dangtuyen'] ? '1' : '0' ?>"
+                                                                                data-ten="<?= htmlspecialchars(strtolower($g['tennhom'] ?? '')) ?>">
+                                                                                <div class="course-card">
+                                                                                    <div class="course-image">
+                                                                                        <img src="<?= _HOST_URL_TEMPLATES ?>/assets/img/education/courses-3.webp"
+                                                                                            alt="Nhóm" class="img-fluid">
+                                                                                        <?php if ($isFull): ?>
+                                                                                            <div class="course-badge">Đã đủ thành
+                                                                                                viên</div>
+                                                                                        <?php elseif ($g['dangtuyen']): ?>
+                                                                                            <div class="course-badge badge-free">
+                                                                                                Đang tuyển</div>
                                                                                         <?php endif; ?>
+                                                                                        <div class="course-price">
+                                                                                            <?= $g['soThanhVien'] ?>/<?= $g['soluongtoida'] ?>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                    <div class="course-content">
+                                                                                        <h3><?= htmlspecialchars($g['tennhom'] ?? '') ?>
+                                                                                        </h3>
+                                                                                        <p class="text-muted small mb-1">
+                                                                                            <?= htmlspecialchars($g['mota'] ?? 'Chưa có mô tả') ?>
+                                                                                        </p>
+                                                                                        <div class="course-stats">
+                                                                                            <div class="stat"><i
+                                                                                                    class="bi bi-people"></i><span><?= $g['soThanhVien'] ?>/<?= $g['soluongtoida'] ?>
+                                                                                                    thành viên</span></div>
+                                                                                        </div>
+                                                                                        <?php if (!empty($g['tenNhomTruong'])): ?>
+                                                                                            <div class="instructor-info mt-2">
+                                                                                                <span class="instructor-name"><i
+                                                                                                        class="bi bi-person-badge me-1"></i>Nhóm
+                                                                                                    trưởng:
+                                                                                                    <?= htmlspecialchars($g['tenNhomTruong']) ?></span>
+                                                                                            </div>
+                                                                                        <?php endif; ?>
+                                                                                        <!-- NÚT ACTION: giữ nguyên logic P_NCKH (có kiểm tra dangtuyen) -->
+                                                                                        <div
+                                                                                            class="mt-2 d-flex gap-2 flex-wrap align-items-center">
+                                                                                            <?php if ($isMyGroup): ?>
+                                                                                                <span class="btn-member"><i
+                                                                                                        class="bi bi-check-circle-fill"></i>
+                                                                                                    Đã tham gia</span>
+                                                                                            <?php elseif ($isPending): ?>
+                                                                                                <span class="btn-pending"><i
+                                                                                                        class="bi bi-clock-history"></i>
+                                                                                                    Đang chờ duyệt</span>
+                                                                                            <?php elseif (!$isFull && $g['dangtuyen'] && $userId > 0): ?>
+                                                                                                <button type="button"
+                                                                                                    class="btn-course"
+                                                                                                    onclick="openJoinModal(<?= $g['idnhom'] ?>, '<?= htmlspecialchars(addslashes($g['tennhom'] ?? '')) ?>')">
+                                                                                                    <i
+                                                                                                        class="bi bi-person-plus me-1"></i>Xin
+                                                                                                    vào nhóm
+                                                                                                </button>
+                                                                                            <?php elseif ($isFull): ?>
+                                                                                                <span class="btn-course disabled"
+                                                                                                    style="opacity:.6;cursor:not-allowed;background:#e5e7eb;color:#374151;">Đã
+                                                                                                    đủ thành viên</span>
+                                                                                            <?php endif; ?>
+                                                                                        </div>
                                                                                     </div>
                                                                                 </div>
                                                                             </div>
-                                                                        </div>
-                                                                    <?php endforeach; ?>
-                                                                <?php else: ?>
-                                                                    <div class="col-12 text-center py-5 text-muted"><i class="bi bi-people fs-2 d-block mb-2"></i>Chưa có nhóm nào.</div>
-                                                                <?php endif; ?>
+                                                                        <?php endforeach; ?>
+                                                                    <?php else: ?>
+                                                                        <div class="col-12 text-center py-5 text-muted"><i
+                                                                                class="bi bi-people fs-2 d-block mb-2"></i>Chưa
+                                                                            có nhóm nào.</div>
+                                                                    <?php endif; ?>
+                                                                </div>
                                                             </div>
                                                         </div>
-                                                    </div></div>
+                                                    </div>
                                                 </div>
                                             </section>
                                         </div>
@@ -539,9 +887,11 @@ layout('navbar');
                                             <div class="my-groups-topbar">
                                                 <div class="search-box">
                                                     <i class="bi bi-search"></i>
-                                                    <input type="text" id="search-my-groups" placeholder="Tìm nhóm của tôi...">
+                                                    <input type="text" id="search-my-groups"
+                                                        placeholder="Tìm nhóm của tôi...">
                                                 </div>
-                                                <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createGroupModal">
+                                                <button class="btn btn-primary" data-bs-toggle="modal"
+                                                    data-bs-target="#createGroupModal">
                                                     <i class="bi bi-plus-circle me-1"></i>Tạo nhóm mới
                                                 </button>
                                             </div>
@@ -553,46 +903,49 @@ layout('navbar');
                                                 </div>
                                             <?php else: ?>
                                                 <div class="row" id="my-groups-grid">
-                                                <?php foreach ($myGroups as $g): ?>
-                                                    <?php $gId = $g['idnhom']; ?>
-                                                    <div class="col-lg-6 col-md-6 my-group-item" data-ten="<?= htmlspecialchars(strtolower($g['tennhom'])) ?>">
-                                                        <div class="nhom-card">
-                                                            <div class="nhom-card-header">
-                                                                <h5><?= htmlspecialchars($g['tennhom']) ?></h5>
-                                                                <?php if ($g['dangtuyen']): ?>
-                                                                    <span class="badge-cong-khai">Công khai</span>
+                                                    <?php foreach ($myGroups as $g): ?>
+                                                        <?php $gId = $g['idnhom']; ?>
+                                                        <div class="col-lg-6 col-md-6 my-group-item"
+                                                            data-ten="<?= htmlspecialchars(strtolower($g['tennhom'])) ?>">
+                                                            <div class="nhom-card">
+                                                                <div class="nhom-card-header">
+                                                                    <h5><?= htmlspecialchars($g['tennhom']) ?></h5>
+                                                                    <?php if ($g['dangtuyen']): ?>
+                                                                        <span class="badge-cong-khai">Công khai</span>
+                                                                    <?php else: ?>
+                                                                        <span class="badge-rieng-tu">Riêng tư</span>
+                                                                    <?php endif; ?>
+                                                                </div>
+                                                                <?php if ($g['gvhd']): ?>
+                                                                    <div class="gvhd-row">
+                                                                        <i class="bi bi-person-workspace"></i>
+                                                                        GVHD: <?= htmlspecialchars($g['gvhd']['tenGVHD']) ?>
+                                                                    </div>
                                                                 <?php else: ?>
-                                                                    <span class="badge-rieng-tu">Riêng tư</span>
+                                                                    <div class="gvhd-alert">
+                                                                        <i class="bi bi-exclamation-triangle-fill"></i>
+                                                                        Nhóm cần có GVHD
+                                                                    </div>
                                                                 <?php endif; ?>
-                                                            </div>
-                                                            <?php if ($g['gvhd']): ?>
-                                                                <div class="gvhd-row">
-                                                                    <i class="bi bi-person-workspace"></i>
-                                                                    GVHD: <?= htmlspecialchars($g['gvhd']['tenGVHD']) ?>
+                                                                <?php if ($g['sanPham']): ?>
+                                                                    <div class="nhom-detai">
+                                                                        <strong>Đề tài:</strong>
+                                                                        <?= htmlspecialchars($g['sanPham']['tensanpham']) ?>
+                                                                        <span
+                                                                            class="badge ms-1 bg-<?= $g['sanPham']['TrangThai'] == 'Đã duyệt' ? 'success' : 'warning text-dark' ?>">
+                                                                            <?= htmlspecialchars($g['sanPham']['TrangThai']) ?>
+                                                                        </span>
+                                                                    </div>
+                                                                <?php endif; ?>
+                                                                <div class="nhom-actions">
+                                                                    <a href="<?= _HOST_URL ?>?module=event&action=chitiethom&id=<?= $gId ?>"
+                                                                        class="btn-nhom btn-nhom-view">
+                                                                        <i class="bi bi-arrow-right-circle"></i> Xem nhóm
+                                                                    </a>
                                                                 </div>
-                                                            <?php else: ?>
-                                                                <div class="gvhd-alert">
-                                                                    <i class="bi bi-exclamation-triangle-fill"></i>
-                                                                    Nhóm cần có GVHD
-                                                                </div>
-                                                            <?php endif; ?>
-                                                            <?php if ($g['sanPham']): ?>
-                                                                <div class="nhom-detai">
-                                                                    <strong>Đề tài:</strong> <?= htmlspecialchars($g['sanPham']['tensanpham']) ?>
-                                                                    <span class="badge ms-1 bg-<?= $g['sanPham']['TrangThai'] == 'Đã duyệt' ? 'success' : 'warning text-dark' ?>">
-                                                                        <?= htmlspecialchars($g['sanPham']['TrangThai']) ?>
-                                                                    </span>
-                                                                </div>
-                                                            <?php endif; ?>
-                                                            <div class="nhom-actions">
-                                                                <a href="<?= _HOST_URL ?>?module=event&action=chitiethom&id=<?= $gId ?>"
-                                                                   class="btn-nhom btn-nhom-view">
-                                                                    <i class="bi bi-arrow-right-circle"></i> Xem nhóm
-                                                                </a>
                                                             </div>
                                                         </div>
-                                                    </div>
-                                                <?php endforeach; ?>
+                                                    <?php endforeach; ?>
                                                 </div>
                                             <?php endif; ?>
                                         </div>
@@ -604,49 +957,57 @@ layout('navbar');
                                                     <div class="lm-empty">
                                                         <i class="bi bi-envelope-open"></i>
                                                         <p class="fw-semibold mt-3 mb-1">Không có lời mời</p>
-                                                        <p class="text-muted small">Bạn chưa có lời mời tham gia nhóm nào trong sự kiện này.</p>
+                                                        <p class="text-muted small">Bạn chưa có lời mời tham gia nhóm nào
+                                                            trong sự kiện này.</p>
                                                     </div>
                                                 <?php else: ?>
-                                                    <p class="text-muted small mb-3">Bạn có <strong><?= $soLoiMoi ?></strong> lời mời đang chờ phản hồi.</p>
+                                                    <p class="text-muted small mb-3">Bạn có
+                                                        <strong><?= $soLoiMoi ?></strong> lời mời đang chờ phản hồi.
+                                                    </p>
                                                     <div class="row g-3" id="loi-moi-grid">
-                                                    <?php foreach ($loiMoiList as $lm): ?>
-                                                        <div class="col-md-6" id="lm-card-<?= $lm['idYeuCau'] ?>">
-                                                            <div class="lm-card">
-                                                                <div class="lm-card-header">
-                                                                    <div class="lm-icon"><i class="bi bi-people-fill"></i></div>
-                                                                    <div class="lm-info">
-                                                                        <h6><?= htmlspecialchars($lm['tennhom']) ?></h6>
-                                                                        <span class="lm-meta">
-                                                                            <i class="bi bi-person-badge me-1"></i>
-                                                                            Nhóm trưởng: <?= htmlspecialchars($lm['tenNhomTruong'] ?: '—') ?>
-                                                                        </span>
+                                                        <?php foreach ($loiMoiList as $lm): ?>
+                                                            <div class="col-md-6" id="lm-card-<?= $lm['idYeuCau'] ?>">
+                                                                <div class="lm-card">
+                                                                    <div class="lm-card-header">
+                                                                        <div class="lm-icon"><i class="bi bi-people-fill"></i>
+                                                                        </div>
+                                                                        <div class="lm-info">
+                                                                            <h6><?= htmlspecialchars($lm['tennhom']) ?></h6>
+                                                                            <span class="lm-meta">
+                                                                                <i class="bi bi-person-badge me-1"></i>
+                                                                                Nhóm trưởng:
+                                                                                <?= htmlspecialchars($lm['tenNhomTruong'] ?: '—') ?>
+                                                                            </span>
+                                                                        </div>
+                                                                        <span
+                                                                            class="lm-count"><?= $lm['soThanhVien'] ?>/<?= $lm['soluongtoida'] ?></span>
                                                                     </div>
-                                                                    <span class="lm-count"><?= $lm['soThanhVien'] ?>/<?= $lm['soluongtoida'] ?></span>
-                                                                </div>
-                                                                <?php if (!empty($lm['loiNhan'])): ?>
-                                                                    <div class="lm-loinhan">
-                                                                        <i class="bi bi-chat-quote me-1"></i>
-                                                                        "<?= htmlspecialchars($lm['loiNhan']) ?>"
+                                                                    <?php if (!empty($lm['loiNhan'])): ?>
+                                                                        <div class="lm-loinhan">
+                                                                            <i class="bi bi-chat-quote me-1"></i>
+                                                                            "<?= htmlspecialchars($lm['loiNhan']) ?>"
+                                                                        </div>
+                                                                    <?php endif; ?>
+                                                                    <div class="lm-time">
+                                                                        <i class="bi bi-clock me-1"></i>
+                                                                        <?= date('d/m/Y H:i', strtotime($lm['ngayGui'])) ?>
                                                                     </div>
-                                                                <?php endif; ?>
-                                                                <div class="lm-time">
-                                                                    <i class="bi bi-clock me-1"></i>
-                                                                    <?= date('d/m/Y H:i', strtotime($lm['ngayGui'])) ?>
-                                                                </div>
-                                                                <div id="lm-result-<?= $lm['idYeuCau'] ?>" style="display:none" class="mt-2"></div>
-                                                                <div class="lm-actions" id="lm-actions-<?= $lm['idYeuCau'] ?>">
-                                                                    <button class="btn-lm btn-lm-accept"
-                                                                        onclick="phanHoiLoiMoi(<?= $lm['idYeuCau'] ?>, 1, '<?= htmlspecialchars(addslashes($lm['tennhom'])) ?>')">
-                                                                        <i class="bi bi-check-lg"></i> Chấp nhận
-                                                                    </button>
-                                                                    <button class="btn-lm btn-lm-decline"
-                                                                        onclick="phanHoiLoiMoi(<?= $lm['idYeuCau'] ?>, 2, '<?= htmlspecialchars(addslashes($lm['tennhom'])) ?>')">
-                                                                        <i class="bi bi-x-lg"></i> Từ chối
-                                                                    </button>
+                                                                    <div id="lm-result-<?= $lm['idYeuCau'] ?>"
+                                                                        style="display:none" class="mt-2"></div>
+                                                                    <div class="lm-actions"
+                                                                        id="lm-actions-<?= $lm['idYeuCau'] ?>">
+                                                                        <button class="btn-lm btn-lm-accept"
+                                                                            onclick="phanHoiLoiMoi(<?= $lm['idYeuCau'] ?>, 1, '<?= htmlspecialchars(addslashes($lm['tennhom'])) ?>')">
+                                                                            <i class="bi bi-check-lg"></i> Chấp nhận
+                                                                        </button>
+                                                                        <button class="btn-lm btn-lm-decline"
+                                                                            onclick="phanHoiLoiMoi(<?= $lm['idYeuCau'] ?>, 2, '<?= htmlspecialchars(addslashes($lm['tennhom'])) ?>')">
+                                                                            <i class="bi bi-x-lg"></i> Từ chối
+                                                                        </button>
+                                                                    </div>
                                                                 </div>
                                                             </div>
-                                                        </div>
-                                                    <?php endforeach; ?>
+                                                        <?php endforeach; ?>
                                                     </div>
                                                 <?php endif; ?>
                                             </div>
@@ -656,82 +1017,165 @@ layout('navbar');
                                 </div>
                             </div><!-- End event-groups -->
 
+                            <!-- ===== TAB: ĐIỂM DANH (từ Bonjour, chỉ hiện khi đã đăng nhập) ===== -->
+                            <?php if ($userId > 0): ?>
+                                <div class="tab-pane fade" id="event-attendance" role="tabpanel">
+                                    <div class="mt-4">
+
+                                        <?php if ($phien_dang_mo): ?>
+                                            <div
+                                                class="alert <?= $da_diemdanh ? 'alert-success' : 'alert-warning' ?> border-0 shadow-sm d-flex align-items-center gap-3 mb-4 p-3">
+                                                <i
+                                                    class="bi bi-<?= $da_diemdanh ? 'check-circle-fill' : 'unlock-fill' ?> fs-3 flex-shrink-0"></i>
+                                                <div class="flex-grow-1">
+                                                    <?php if ($da_diemdanh): ?>
+                                                        <strong class="d-block">Bạn đã điểm danh buổi này ✓</strong>
+                                                        <small class="text-muted">Hoạt động:
+                                                            <?= htmlspecialchars($phien_dang_mo['tenHoatDong']) ?></small>
+                                                    <?php else: ?>
+                                                        <strong class="d-block">Đang có phiên điểm danh mở!</strong>
+                                                        <small>
+                                                            <?= htmlspecialchars($phien_dang_mo['tenHoatDong']) ?>
+                                                            &nbsp;—&nbsp; Đóng lúc
+                                                            <?= date('H:i', strtotime($phien_dang_mo['thoiGianDongDiemDanh'])) ?>
+                                                        </small>
+                                                    <?php endif; ?>
+                                                </div>
+                                                <?php if (!$da_diemdanh): ?>
+                                                    <a href="<?= _HOST_URL ?>/?module=diemdanh&action=checkin&lich=<?= $phien_dang_mo['idLichTrinh'] ?>"
+                                                        class="btn btn-success fw-bold px-4 flex-shrink-0">
+                                                        <i class="bi bi-qr-code-scan me-1"></i>Điểm danh ngay
+                                                    </a>
+                                                <?php else: ?>
+                                                    <span class="badge bg-success fs-6 px-3 py-2 flex-shrink-0">
+                                                        <i class="bi bi-check-circle me-1"></i>Đã điểm danh
+                                                    </span>
+                                                <?php endif; ?>
+                                            </div>
+                                        <?php else: ?>
+                                            <div
+                                                class="alert alert-light border text-muted d-flex align-items-center gap-3 mb-4 p-3">
+                                                <i class="bi bi-lock fs-3 flex-shrink-0 text-secondary"></i>
+                                                <div>
+                                                    <strong class="d-block text-dark">Chưa có phiên điểm danh nào đang
+                                                        mở</strong>
+                                                    <small>Ban tổ chức sẽ mở điểm danh trước mỗi buổi tổ chức. Bạn sẽ thấy thông
+                                                        báo tại đây.</small>
+                                                </div>
+                                            </div>
+                                        <?php endif; ?>
+
+                                        <?php if ($is_btc): ?>
+                                            <div class="card border-0 bg-light">
+                                                <div class="card-body d-flex align-items-center justify-content-between gap-3">
+                                                    <div>
+                                                        <h6 class="fw-bold mb-1">
+                                                            <i class="bi bi-gear me-1 text-primary"></i>Quản lý điểm danh (BTC)
+                                                        </h6>
+                                                        <small class="text-muted">
+                                                            Tạo lịch trình, mở/đóng phiên, điểm danh thủ công, xem danh sách
+                                                        </small>
+                                                    </div>
+                                                    <a href="<?= _HOST_URL ?>/?module=diemdanh&action=index&id=<?= $id ?>"
+                                                        class="btn btn-primary btn-sm text-nowrap">
+                                                        <i class="bi bi-arrow-right-circle me-1"></i>Vào trang quản lý
+                                                    </a>
+                                                </div>
+                                            </div>
+                                        <?php endif; ?>
+
+                                    </div>
+                                </div>
+                            <?php endif; ?>
+
                             <!-- ===== TAB: CẤU HÌNH SỰ KIỆN (chỉ BTC) ===== -->
                             <?php if ($is_btc): ?>
-                            <div class="tab-pane fade" id="event-config" role="tabpanel">
-                                <div class="event-config-content mt-4">
-                                    <h3 class="fw-bold text-primary"><i class="bi bi-gear me-2"></i>Bảng điều khiển Sự kiện</h3>
-                                    <div class="d-flex flex-column gap-3 mt-4">
-                                        <div class="row g-2">
-                                            <div class="col-md-4">
-                                                <a class="btn btn-outline-primary w-100 py-3 fw-bold" href="<?= _HOST_URL ?>/?module=event&action=config_rounds&id=<?= $id ?>">
-                                                    <i class="bi bi-layers d-block fs-3 mb-1"></i> Cấu hình cơ bản
-                                                </a>
+                                <div class="tab-pane fade" id="event-config" role="tabpanel">
+                                    <div class="event-config-content mt-4">
+                                        <h3 class="fw-bold text-primary"><i class="bi bi-gear me-2"></i>Bảng điều khiển Sự
+                                            kiện</h3>
+                                        <div class="d-flex flex-column gap-3 mt-4">
+                                            <div class="row g-2">
+                                                <div class="col-md-4">
+                                                    <a class="btn btn-outline-primary w-100 py-3 fw-bold"
+                                                        href="<?= _HOST_URL ?>/?module=event&action=config_rounds&id=<?= $id ?>">
+                                                        <i class="bi bi-layers d-block fs-3 mb-1"></i> Cấu hình cơ bản
+                                                    </a>
+                                                </div>
+                                                <div class="col-md-4">
+                                                    <a class="btn btn-outline-primary w-100 py-3 fw-bold"
+                                                        href="<?= _HOST_URL ?>/?module=event&action=config_rules&id=<?= $id ?>">
+                                                        <i class="bi bi-file-earmark-ruled d-block fs-3 mb-1"></i> Quy chế
+                                                    </a>
+                                                </div>
+                                                <div class="col-md-4">
+                                                    <a class="btn btn-outline-primary w-100 py-3 fw-bold"
+                                                        href="<?= _HOST_URL ?>/?module=event&action=config_criteria&id=<?= $id ?>">
+                                                        <i class="bi bi-ui-checks d-block fs-3 mb-1"></i> Bộ tiêu chí
+                                                    </a>
+                                                </div>
                                             </div>
-                                            <div class="col-md-4">
-                                                <a class="btn btn-outline-primary w-100 py-3 fw-bold" href="<?= _HOST_URL ?>/?module=event&action=config_rules&id=<?= $id ?>">
-                                                    <i class="bi bi-file-earmark-ruled d-block fs-3 mb-1"></i> Quy chế
-                                                </a>
-                                            </div>
-                                            <div class="col-md-4">
-                                                <a class="btn btn-outline-primary w-100 py-3 fw-bold" href="<?= _HOST_URL ?>/?module=event&action=config_criteria&id=<?= $id ?>">
-                                                    <i class="bi bi-ui-checks d-block fs-3 mb-1"></i> Bộ tiêu chí
-                                                </a>
-                                            </div>
-                                        </div>
-                                        <div class="card border-0 shadow-sm bg-light mt-2">
-                                            <div class="card-body">
-                                                <h6 class="fw-bold text-dark mb-3 text-uppercase">Nghiệp vụ chấm thi & Đánh giá</h6>
-                                                <a class="btn btn-success text-white w-100 text-start p-3 mb-2 rounded-3 shadow-sm"
-                                                   href="<?= _HOST_URL ?>/?module=event&action=config_grading&id=<?= $id ?>">
-                                                    <i class="bi bi-pencil-square fs-4 me-2 align-middle"></i>
-                                                    <strong>1. Phân công & Quản lý Điểm (Sơ loại)</strong>
-                                                </a>
-                                                <a class="btn btn-warning text-dark w-100 text-start p-3 rounded-3 shadow-sm"
-                                                   href="<?= _HOST_URL ?>/?module=event&action=config_subcommittee&id=<?= $id ?>">
-                                                    <i class="bi bi-diagram-3 fs-4 me-2 align-middle"></i>
-                                                    <strong>2. Quản lý Tiểu ban (Bảo vệ Vòng trong)</strong>
-                                                </a>
+                                            <div class="card border-0 shadow-sm bg-light mt-2">
+                                                <div class="card-body">
+                                                    <h6 class="fw-bold text-dark mb-3 text-uppercase">Nghiệp vụ chấm thi &
+                                                        Đánh giá</h6>
+                                                    <a class="btn btn-success text-white w-100 text-start p-3 mb-2 rounded-3 shadow-sm"
+                                                        href="<?= _HOST_URL ?>/?module=event&action=config_grading&id=<?= $id ?>">
+                                                        <i class="bi bi-pencil-square fs-4 me-2 align-middle"></i>
+                                                        <strong>1. Phân công & Quản lý Điểm (Sơ loại)</strong>
+                                                    </a>
+                                                    <a class="btn btn-warning text-dark w-100 text-start p-3 rounded-3 shadow-sm"
+                                                        href="<?= _HOST_URL ?>/?module=event&action=config_subcommittee&id=<?= $id ?>">
+                                                        <i class="bi bi-diagram-3 fs-4 me-2 align-middle"></i>
+                                                        <strong>2. Quản lý Tiểu ban (Bảo vệ Vòng trong)</strong>
+                                                    </a>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
                                 </div>
-                            </div>
                             <?php endif; ?>
 
                             <!-- ===== TAB: KHU VỰC GIÁM KHẢO (BTC hoặc GV được phân công) ===== -->
                             <?php if ($is_btc || $is_giangvien): ?>
-                            <div class="tab-pane fade" id="event-grading" role="tabpanel">
-                                <div class="event-grading-content mt-4">
-                                    <h3 class="fw-bold text-success"><i class="bi bi-briefcase me-2"></i>Khu vực làm việc của Ban Giám Khảo</h3>
-                                    <div class="d-flex flex-column gap-3 mt-4">
-                                        <a class="btn btn-success text-start p-3 shadow-sm rounded-3"
-                                           href="<?= _HOST_URL ?>/?module=event&action=my_grading_tasks&id=<?= $id ?>">
-                                            <div class="d-flex align-items-center">
-                                                <div class="bg-white text-success rounded-circle d-flex align-items-center justify-content-center me-3" style="width:50px;height:50px;">
-                                                    <i class="bi bi-journal-check fs-4"></i>
+                                <div class="tab-pane fade" id="event-grading" role="tabpanel">
+                                    <div class="event-grading-content mt-4">
+                                        <h3 class="fw-bold text-success"><i class="bi bi-briefcase me-2"></i>Khu vực làm
+                                            việc của Ban Giám Khảo</h3>
+                                        <div class="d-flex flex-column gap-3 mt-4">
+                                            <a class="btn btn-success text-start p-3 shadow-sm rounded-3"
+                                                href="<?= _HOST_URL ?>/?module=event&action=my_grading_tasks&id=<?= $id ?>">
+                                                <div class="d-flex align-items-center">
+                                                    <div class="bg-white text-success rounded-circle d-flex align-items-center justify-content-center me-3"
+                                                        style="width:50px;height:50px;">
+                                                        <i class="bi bi-journal-check fs-4"></i>
+                                                    </div>
+                                                    <div>
+                                                        <h5 class="mb-1 fw-bold text-white">Nhiệm vụ Chấm điểm</h5>
+                                                        <small class="text-white-50">Truy cập danh sách các bài thi bạn được
+                                                            phân công đánh giá</small>
+                                                    </div>
                                                 </div>
-                                                <div>
-                                                    <h5 class="mb-1 fw-bold text-white">Nhiệm vụ Chấm điểm</h5>
-                                                    <small class="text-white-50">Truy cập danh sách các bài thi bạn được phân công đánh giá</small>
-                                                </div>
-                                            </div>
-                                        </a>
-                                        <button class="btn btn-info text-start p-3 shadow-sm rounded-3 text-dark border-0"
+                                            </a>
+                                            <button
+                                                class="btn btn-info text-start p-3 shadow-sm rounded-3 text-dark border-0"
                                                 data-bs-toggle="modal" data-bs-target="#modalSchedule">
-                                            <div class="d-flex align-items-center">
-                                                <div class="bg-white text-info rounded-circle d-flex align-items-center justify-content-center me-3" style="width:50px;height:50px;">
-                                                    <i class="bi bi-people fs-4"></i>
+                                                <div class="d-flex align-items-center">
+                                                    <div class="bg-white text-info rounded-circle d-flex align-items-center justify-content-center me-3"
+                                                        style="width:50px;height:50px;">
+                                                        <i class="bi bi-people fs-4"></i>
+                                                    </div>
+                                                    <div>
+                                                        <h5 class="mb-1 fw-bold text-dark">Lịch trình Hội đồng / Tiểu ban
+                                                        </h5>
+                                                        <small>Xem thông tin phòng, thời gian và các thành viên cùng Hội
+                                                            đồng</small>
+                                                    </div>
                                                 </div>
-                                                <div>
-                                                    <h5 class="mb-1 fw-bold text-dark">Lịch trình Hội đồng / Tiểu ban</h5>
-                                                    <small>Xem thông tin phòng, thời gian và các thành viên cùng Hội đồng</small>
-                                                </div>
-                                            </div>
-                                        </button>
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
                             <?php endif; ?>
 
                         </div>
@@ -744,12 +1188,22 @@ layout('navbar');
                     <div class="course-details-card" data-aos="fade-up" data-aos-delay="300">
                         <h4>Thông tin sự kiện</h4>
                         <div class="detail-grid">
-                            <div class="detail-row"><span class="detail-label">Cấp tổ chức</span><span class="detail-value"><?= htmlspecialchars($event['tenCap'] ?? '—') ?></span></div>
-                            <div class="detail-row"><span class="detail-label">Mở đăng ký</span><span class="detail-value"><?= $event['ngayMoDangKy'] ? date('d/m/Y', strtotime($event['ngayMoDangKy'])) : '—' ?></span></div>
-                            <div class="detail-row"><span class="detail-label">Đóng đăng ký</span><span class="detail-value"><?= $event['ngayDongDangKy'] ? date('d/m/Y', strtotime($event['ngayDongDangKy'])) : '—' ?></span></div>
-                            <div class="detail-row"><span class="detail-label">Ngày bắt đầu</span><span class="detail-value"><?= $event['ngayBatDau'] ? date('d/m/Y', strtotime($event['ngayBatDau'])) : '—' ?></span></div>
-                            <div class="detail-row"><span class="detail-label">Ngày kết thúc</span><span class="detail-value"><?= $event['ngayKetThuc'] ? date('d/m/Y', strtotime($event['ngayKetThuc'])) : '—' ?></span></div>
-                            <div class="detail-row"><span class="detail-label">Tổng số nhóm</span><span class="detail-value"><?= count($groups) ?></span></div>
+                            <div class="detail-row"><span class="detail-label">Cấp tổ chức</span><span
+                                    class="detail-value"><?= htmlspecialchars($event['tenCap'] ?? '—') ?></span></div>
+                            <div class="detail-row"><span class="detail-label">Mở đăng ký</span><span
+                                    class="detail-value"><?= $event['ngayMoDangKy'] ? date('d/m/Y', strtotime($event['ngayMoDangKy'])) : '—' ?></span>
+                            </div>
+                            <div class="detail-row"><span class="detail-label">Đóng đăng ký</span><span
+                                    class="detail-value"><?= $event['ngayDongDangKy'] ? date('d/m/Y', strtotime($event['ngayDongDangKy'])) : '—' ?></span>
+                            </div>
+                            <div class="detail-row"><span class="detail-label">Ngày bắt đầu</span><span
+                                    class="detail-value"><?= $event['ngayBatDau'] ? date('d/m/Y', strtotime($event['ngayBatDau'])) : '—' ?></span>
+                            </div>
+                            <div class="detail-row"><span class="detail-label">Ngày kết thúc</span><span
+                                    class="detail-value"><?= $event['ngayKetThuc'] ? date('d/m/Y', strtotime($event['ngayKetThuc'])) : '—' ?></span>
+                            </div>
+                            <div class="detail-row"><span class="detail-label">Tổng số nhóm</span><span
+                                    class="detail-value"><?= count($groups) ?></span></div>
                             <div class="detail-row">
                                 <span class="detail-label">Trạng thái</span>
                                 <span class="detail-value">
@@ -798,277 +1252,243 @@ layout('navbar');
                         <input type="text" name="tennhom" class="form-control" required placeholder="Nhập tên nhóm...">
                     </div>
                     <div class="mb-3">
-                        <label class="form-label fw-semibold">Số thành viên tối đa <span class="text-danger">*</span></label>
-                        <input type="number" name="soluongtoida" class="form-control" required min="1" max="20" value="5" placeholder="Ví dụ: 5">
+                        <label class="form-label fw-semibold">Số thành viên tối đa <span
+                                class="text-danger">*</span></label>
+                        <input type="number" name="soluongtoida" class="form-control" required min="1" max="20"
+                            value="5" placeholder="Ví dụ: 5">
                         <div class="form-text">Số lượng thành viên tối đa (không tính GVHD).</div>
                     </div>
                     <div class="mb-3">
                         <label class="form-label fw-semibold">Mô tả nhóm</label>
-                        <textarea name="mota" class="form-control" rows="3" placeholder="Mô tả ngắn về nhóm..."></textarea>
+                        <textarea name="mota" class="form-control" rows="3"
+                            placeholder="Mô tả ngắn về nhóm..."></textarea>
                     </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Huỷ</button>
-                    <button type="submit" name="create_group" class="btn btn-primary"><i class="bi bi-plus-circle me-1"></i>Tạo nhóm</button>
+                    <button type="submit" name="create_group" class="btn btn-primary"><i
+                            class="bi bi-plus-circle me-1"></i>Tạo nhóm</button>
                 </div>
             </form>
         </div>
     </div>
 </div>
 
-<!-- ===== MODAL XIN VÀO NHÓM ===== -->
+<!-- ===== MODAL XIN VÀO NHÓM (P_NCKH: dùng form POST) ===== -->
 <div class="modal fade" id="joinGroupModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
-            <div class="modal-header-grad d-flex justify-content-between align-items-center">
-                <h5 class="modal-title mb-0"><i class="bi bi-person-plus me-2"></i>Xin vào nhóm</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body p-4">
-                <div class="join-modal-info mb-3">
-                    <i class="bi bi-info-circle-fill me-2"></i>
-                    Yêu cầu của bạn sẽ được gửi đến trưởng nhóm <strong id="joinGroupName"></strong> để xét duyệt.
+            <form method="POST">
+                <input type="hidden" name="xin_vao_nhom" value="1">
+                <input type="hidden" name="idNhom" id="joinGroupId" value="">
+                <div class="modal-header-grad d-flex justify-content-between align-items-center">
+                    <h5 class="modal-title mb-0"><i class="bi bi-person-plus me-2"></i>Xin vào nhóm</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
-                <div id="joinModalResult" style="display:none" class="mb-3"></div>
-                <div id="joinFormBody">
-                    <label class="form-label fw-semibold">Lời nhắn gửi trưởng nhóm</label>
-                    <textarea id="joinLoiNhan" class="form-control" rows="3" placeholder="Giới thiệu bản thân và lý do muốn tham gia nhóm..."></textarea>
+                <div class="modal-body p-4">
+                    <div class="join-modal-info mb-3">
+                        <i class="bi bi-info-circle-fill me-2"></i>
+                        Yêu cầu của bạn sẽ được gửi đến trưởng nhóm <strong id="joinGroupName"></strong> để xét duyệt.
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Lời nhắn gửi trưởng nhóm</label>
+                        <textarea name="loiNhan" class="form-control" rows="3"
+                            placeholder="Giới thiệu bản thân và lý do muốn tham gia nhóm..."></textarea>
+                    </div>
                 </div>
-            </div>
-            <div class="modal-footer" id="joinModalFooter">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Huỷ</button>
-                <button type="button" class="btn btn-primary" id="btnGuiYeuCau" onclick="guiYeuCauThamGia()">
-                    <i class="bi bi-send me-1"></i>Gửi yêu cầu
-                </button>
-            </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Huỷ</button>
+                    <button type="submit" class="btn btn-primary"><i class="bi bi-send me-1"></i>Gửi yêu cầu</button>
+                </div>
+            </form>
         </div>
     </div>
 </div>
 
 <!-- ===== MODAL LỊCH TRÌNH HỘI ĐỒNG (Giám khảo) ===== -->
 <?php if ($is_btc || $is_giangvien): ?>
-<div class="modal fade" id="modalSchedule" tabindex="-1">
-    <div class="modal-dialog modal-lg modal-dialog-centered">
-        <div class="modal-content border-0 shadow">
-            <div class="modal-header bg-info text-dark">
-                <h5 class="modal-title fw-bold"><i class="bi bi-calendar3 me-2"></i>Lịch trình Hội đồng của tôi</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body p-4 bg-light">
-                <?php if (empty($my_subcommittees)): ?>
-                    <div class="text-center py-4">
-                        <i class="bi bi-info-circle fs-1 text-muted d-block mb-2"></i>
-                        <p class="text-muted">Bạn chưa được phân công vào Tiểu ban báo cáo nào trong sự kiện này.</p>
-                    </div>
-                <?php else: foreach ($my_subcommittees as $tb): ?>
-                    <div class="card shadow-sm border-0 mb-4 overflow-hidden">
-                        <div class="card-header bg-white border-bottom py-3">
-                            <h5 class="text-primary fw-bold mb-1"><?= htmlspecialchars($tb['tenTieuBan']) ?></h5>
-                            <span class="badge bg-primary bg-opacity-10 text-primary rounded-pill"><?= htmlspecialchars($tb['tenVongThi']) ?></span>
+    <div class="modal fade" id="modalSchedule" tabindex="-1">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content border-0 shadow">
+                <div class="modal-header bg-info text-dark">
+                    <h5 class="modal-title fw-bold"><i class="bi bi-calendar3 me-2"></i>Lịch trình Hội đồng của tôi</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-4 bg-light">
+                    <?php if (empty($my_subcommittees)): ?>
+                        <div class="text-center py-4">
+                            <i class="bi bi-info-circle fs-1 text-muted d-block mb-2"></i>
+                            <p class="text-muted">Bạn chưa được phân công vào Tiểu ban báo cáo nào trong sự kiện này.</p>
                         </div>
-                        <div class="card-body">
-                            <div class="row mb-4">
-                                <div class="col-md-6 mb-3 mb-md-0">
-                                    <label class="text-muted small text-uppercase fw-bold d-block mb-1">Thời gian báo cáo</label>
-                                    <div class="d-flex align-items-center text-dark fw-bold">
-                                        <i class="bi bi-clock-fill me-2 text-info"></i>
-                                        <?= $tb['ngayBaoCao'] ? date('d/m/Y', strtotime($tb['ngayBaoCao'])) : 'Chưa xếp lịch' ?>
-                                    </div>
+                        <?php else: foreach ($my_subcommittees as $tb): ?>
+                            <div class="card shadow-sm border-0 mb-4 overflow-hidden">
+                                <div class="card-header bg-white border-bottom py-3">
+                                    <h5 class="text-primary fw-bold mb-1"><?= htmlspecialchars($tb['tenTieuBan']) ?></h5>
+                                    <span
+                                        class="badge bg-primary bg-opacity-10 text-primary rounded-pill"><?= htmlspecialchars($tb['tenVongThi']) ?></span>
                                 </div>
-                                <div class="col-md-6">
-                                    <label class="text-muted small text-uppercase fw-bold d-block mb-1">Địa điểm / Phòng</label>
-                                    <div class="d-flex align-items-center text-dark fw-bold">
-                                        <i class="bi bi-geo-alt-fill me-2 text-danger"></i>
-                                        <?= htmlspecialchars($tb['diaDiem'] ?: 'Chưa xác định') ?>
+                                <div class="card-body">
+                                    <div class="row mb-4">
+                                        <div class="col-md-6 mb-3 mb-md-0">
+                                            <label class="text-muted small text-uppercase fw-bold d-block mb-1">Thời gian báo
+                                                cáo</label>
+                                            <div class="d-flex align-items-center text-dark fw-bold">
+                                                <i class="bi bi-clock-fill me-2 text-info"></i>
+                                                <?= $tb['ngayBaoCao'] ? date('d/m/Y', strtotime($tb['ngayBaoCao'])) : 'Chưa xếp lịch' ?>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="text-muted small text-uppercase fw-bold d-block mb-1">Địa điểm /
+                                                Phòng</label>
+                                            <div class="d-flex align-items-center text-dark fw-bold">
+                                                <i class="bi bi-geo-alt-fill me-2 text-danger"></i>
+                                                <?= htmlspecialchars($tb['diaDiem'] ?: 'Chưa xác định') ?>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="row">
+                                        <div class="col-md-6 mb-4 mb-md-0">
+                                            <h6 class="fw-bold mb-3 border-start border-4 border-info ps-2">Thành viên Hội đồng</h6>
+                                            <div class="d-flex flex-wrap gap-2">
+                                                <?php foreach ($tb['members'] as $m): ?>
+                                                    <span class="badge bg-light text-dark border p-2 fw-normal">
+                                                        <i
+                                                            class="bi bi-person-fill me-1 text-secondary"></i><?= htmlspecialchars($m['tenGV']) ?>
+                                                    </span>
+                                                <?php endforeach; ?>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <h6 class="fw-bold mb-3 border-start border-4 border-success ps-2">Danh sách bài báo cáo
+                                                (<?= count($tb['products']) ?>)</h6>
+                                            <ul class="list-group list-group-flush small">
+                                                <?php foreach ($tb['products'] as $p): ?>
+                                                    <li class="list-group-item bg-transparent px-0 border-0 py-1">
+                                                        <i class="bi bi-file-earmark-text me-2 text-success"></i>
+                                                        <strong><?= htmlspecialchars($p['tennhom'] ?: $p['manhom']) ?>:</strong>
+                                                        <?= htmlspecialchars($p['tensanpham']) ?>
+                                                    </li>
+                                                <?php endforeach; ?>
+                                            </ul>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
-                            <div class="row">
-                                <div class="col-md-6 mb-4 mb-md-0">
-                                    <h6 class="fw-bold mb-3 border-start border-4 border-info ps-2">Thành viên Hội đồng</h6>
-                                    <div class="d-flex flex-wrap gap-2">
-                                        <?php foreach ($tb['members'] as $m): ?>
-                                            <span class="badge bg-light text-dark border p-2 fw-normal">
-                                                <i class="bi bi-person-fill me-1 text-secondary"></i><?= htmlspecialchars($m['tenGV']) ?>
-                                            </span>
-                                        <?php endforeach; ?>
-                                    </div>
-                                </div>
-                                <div class="col-md-6">
-                                    <h6 class="fw-bold mb-3 border-start border-4 border-success ps-2">Danh sách bài báo cáo (<?= count($tb['products']) ?>)</h6>
-                                    <ul class="list-group list-group-flush small">
-                                        <?php foreach ($tb['products'] as $p): ?>
-                                            <li class="list-group-item bg-transparent px-0 border-0 py-1">
-                                                <i class="bi bi-file-earmark-text me-2 text-success"></i>
-                                                <strong><?= htmlspecialchars($p['tennhom'] ?: $p['manhom']) ?>:</strong> <?= htmlspecialchars($p['tensanpham']) ?>
-                                            </li>
-                                        <?php endforeach; ?>
-                                    </ul>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                <?php endforeach; endif; ?>
-            </div>
-            <div class="modal-footer border-0 bg-white">
-                <button type="button" class="btn btn-secondary rounded-pill px-4" data-bs-dismiss="modal">Đóng</button>
+                    <?php endforeach;
+                    endif; ?>
+                </div>
+                <div class="modal-footer border-0 bg-white">
+                    <button type="button" class="btn btn-secondary rounded-pill px-4" data-bs-dismiss="modal">Đóng</button>
+                </div>
             </div>
         </div>
     </div>
-</div>
 <?php endif; ?>
 
 <?php layout('footer'); ?>
 
 <script>
-const AJAX_URL = window.location.href;
+    const AJAX_URL = window.location.href;
 
-let _joinNhomId = 0;
+    // openJoinModal: P_NCKH — dùng hidden input trong form POST
+    function openJoinModal(idNhom, tenNhom) {
+        document.getElementById('joinGroupId').value = idNhom;
+        document.getElementById('joinGroupName').textContent = tenNhom;
+        new bootstrap.Modal(document.getElementById('joinGroupModal')).show();
+    }
 
-function openJoinModal(idNhom, tenNhom) {
-    _joinNhomId = idNhom;
-    document.getElementById('joinGroupName').textContent = tenNhom;
-    document.getElementById('joinLoiNhan').value = '';
-    document.getElementById('joinModalResult').style.display = 'none';
-    document.getElementById('joinFormBody').style.display = '';
-    document.getElementById('joinModalFooter').style.display = '';
-    new bootstrap.Modal(document.getElementById('joinGroupModal')).show();
-}
-
-function guiYeuCauThamGia() {
-    const btn = document.getElementById('btnGuiYeuCau');
-    const loiNhan = document.getElementById('joinLoiNhan').value;
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Đang gửi...';
-
-    fetch(AJAX_URL, {
-        method: 'POST',
-        body: new URLSearchParams({
-            ajax_xin_vao_nhom: '1',
-            idNhom: _joinNhomId,
-            loiNhan: loiNhan
-        })
-    })
-    .then(r => r.json())
-    .then(data => {
-        const resultEl = document.getElementById('joinModalResult');
-        resultEl.style.display = '';
-        if (data.status) {
-            // Ẩn form, hiện thông báo thành công
-            document.getElementById('joinFormBody').style.display = 'none';
-            document.getElementById('joinModalFooter').style.display = 'none';
-            resultEl.innerHTML = `
-                <div class="alert alert-success d-flex align-items-center gap-3 mb-0">
-                    <i class="bi bi-check-circle-fill fs-3 text-success"></i>
-                    <div>
-                        <div class="fw-bold">Gửi yêu cầu thành công!</div>
-                        <div class="small text-muted mt-1">Yêu cầu của bạn đã được ghi nhận. Vui lòng chờ trưởng nhóm xét duyệt.</div>
-                    </div>
-                </div>`;
-            // Cập nhật nút trên card -> "Đang chờ duyệt" (tìm card tương ứng)
-            document.querySelectorAll('#all-groups-grid .group-item').forEach(el => {
-                const btn2 = el.querySelector('button.btn-course');
-                if (btn2 && btn2.getAttribute('onclick')?.includes('openJoinModal(' + _joinNhomId + ',')) {
-                    const div = btn2.closest('.mt-2');
-                    div.innerHTML = `
-                        <span class="btn-pending"><i class="bi bi-clock-history"></i> Đang chờ duyệt</span>
-                        <a href="<?= _HOST_URL ?>?module=event&action=chitiethom&id=${_joinNhomId}"
-                           class="btn-course" style="background:#6b7280;">
-                            <i class="bi bi-eye me-1"></i>Xem nhóm
-                        </a>`;
-                }
-            });
-        } else {
-            resultEl.innerHTML = `<div class="alert alert-warning mb-0"><i class="bi bi-exclamation-triangle me-2"></i>${escHtml(data.message)}</div>`;
-            btn.disabled = false;
-            btn.innerHTML = '<i class="bi bi-send me-1"></i>Gửi yêu cầu';
-        }
-    })
-    .catch(() => {
-        document.getElementById('joinModalResult').style.display = '';
-        document.getElementById('joinModalResult').innerHTML = '<div class="alert alert-danger mb-0">Lỗi kết nối, vui lòng thử lại.</div>';
-        btn.disabled = false;
-        btn.innerHTML = '<i class="bi bi-send me-1"></i>Gửi yêu cầu';
+    // ---- Tìm kiếm & lọc nhóm ----
+    document.getElementById('search-all-groups')?.addEventListener('input', function() {
+        const q = this.value.toLowerCase();
+        document.querySelectorAll('#all-groups-grid .group-item').forEach(el => {
+            el.style.display = el.dataset.ten?.includes(q) ? '' : 'none';
+        });
     });
-}
-
-// ---- Tìm kiếm & lọc nhóm ----
-document.getElementById('search-all-groups')?.addEventListener('input', function() {
-    const q = this.value.toLowerCase();
-    document.querySelectorAll('#all-groups-grid .group-item').forEach(el => {
-        el.style.display = el.dataset.ten?.includes(q) ? '' : 'none';
+    document.getElementById('sort-all-groups')?.addEventListener('change', function() {
+        const val = this.value;
+        document.querySelectorAll('#all-groups-grid .group-item').forEach(el => {
+            if (!val) el.style.display = '';
+            else if (val === 'dang_tuyen') el.style.display = el.dataset.tuyen === '1' ? '' : 'none';
+            else el.style.display = el.dataset.tuyen === '0' ? '' : 'none';
+        });
     });
-});
-document.getElementById('sort-all-groups')?.addEventListener('change', function() {
-    const val = this.value;
-    document.querySelectorAll('#all-groups-grid .group-item').forEach(el => {
-        if (!val) el.style.display = '';
-        else if (val === 'dang_tuyen') el.style.display = el.dataset.tuyen === '1' ? '' : 'none';
-        else el.style.display = el.dataset.tuyen === '0' ? '' : 'none';
+    document.getElementById('search-my-groups')?.addEventListener('input', function() {
+        const q = this.value.toLowerCase();
+        document.querySelectorAll('#my-groups-grid .my-group-item').forEach(el => {
+            el.style.display = el.dataset.ten?.includes(q) ? '' : 'none';
+        });
     });
-});
-document.getElementById('search-my-groups')?.addEventListener('input', function() {
-    const q = this.value.toLowerCase();
-    document.querySelectorAll('#my-groups-grid .my-group-item').forEach(el => {
-        el.style.display = el.dataset.ten?.includes(q) ? '' : 'none';
-    });
-});
 
-// ---- AJAX: Phản hồi lời mời ----
-function phanHoiLoiMoi(idYeuCau, trangThai, tenNhom) {
-    const actionsEl = document.getElementById('lm-actions-' + idYeuCau);
-    const resultEl  = document.getElementById('lm-result-'  + idYeuCau);
-    actionsEl.querySelectorAll('button').forEach(b => { b.disabled = true; });
+    // ---- AJAX: Phản hồi lời mời ----
+    function phanHoiLoiMoi(idYeuCau, trangThai, tenNhom) {
+        const actionsEl = document.getElementById('lm-actions-' + idYeuCau);
+        const resultEl = document.getElementById('lm-result-' + idYeuCau);
+        actionsEl.querySelectorAll('button').forEach(b => {
+            b.disabled = true;
+        });
 
-    fetch(AJAX_URL, {
-        method: 'POST',
-        body: new URLSearchParams({ ajax_action: 'phan_hoi_loi_moi', idYeuCau, trangThai })
-    })
-    .then(r => r.json())
-    .then(data => {
-        actionsEl.style.display = 'none';
-        resultEl.style.display  = '';
-        if (data.status && trangThai == 1) {
-            resultEl.innerHTML = `
+        fetch(AJAX_URL, {
+                method: 'POST',
+                body: new URLSearchParams({
+                    ajax_action: 'phan_hoi_loi_moi',
+                    idYeuCau,
+                    trangThai
+                })
+            })
+            .then(r => r.json())
+            .then(data => {
+                actionsEl.style.display = 'none';
+                resultEl.style.display = '';
+                if (data.status && trangThai == 1) {
+                    resultEl.innerHTML = `
                 <div class="alert alert-success py-2 mb-0 d-flex align-items-center gap-2">
                     <i class="bi bi-check-circle-fill fs-5"></i>
                     <div><strong>Đã tham gia nhóm!</strong><br>
                     <span class="small text-muted">Bạn đã chấp nhận lời mời vào nhóm <strong>${escHtml(tenNhom)}</strong>.</span></div>
                 </div>`;
-            updateLoiMoiBadge(-1);
-        } else if (data.status && trangThai == 2) {
-            resultEl.innerHTML = `
+                    updateLoiMoiBadge(-1);
+                } else if (data.status && trangThai == 2) {
+                    resultEl.innerHTML = `
                 <div class="alert alert-secondary py-2 mb-0 d-flex align-items-center gap-2">
                     <i class="bi bi-x-circle fs-5"></i>
                     <div><strong>Đã từ chối.</strong><br>
                     <span class="small text-muted">Bạn đã từ chối lời mời từ nhóm <strong>${escHtml(tenNhom)}</strong>.</span></div>
                 </div>`;
-            updateLoiMoiBadge(-1);
-        } else {
-            resultEl.innerHTML = `<div class="alert alert-danger py-2 mb-0">${escHtml(data.message)}</div>`;
-            actionsEl.style.display = '';
-            actionsEl.querySelectorAll('button').forEach(b => { b.disabled = false; });
-        }
-    })
-    .catch(() => {
-        actionsEl.style.display = '';
-        actionsEl.querySelectorAll('button').forEach(b => { b.disabled = false; });
-    });
-}
-
-function updateLoiMoiBadge(delta) {
-    const tabBtn = document.querySelector('[data-bs-target="#loi-moi"]');
-    if (!tabBtn) return;
-    let badge = tabBtn.querySelector('.badge');
-    const newVal = (badge ? parseInt(badge.textContent) : 0) + delta;
-    if (newVal <= 0) { if (badge) badge.remove(); }
-    else {
-        if (!badge) { badge = document.createElement('span'); badge.className = 'badge bg-danger ms-1'; tabBtn.appendChild(badge); }
-        badge.textContent = newVal;
+                    updateLoiMoiBadge(-1);
+                } else {
+                    resultEl.innerHTML = `<div class="alert alert-danger py-2 mb-0">${escHtml(data.message)}</div>`;
+                    actionsEl.style.display = '';
+                    actionsEl.querySelectorAll('button').forEach(b => {
+                        b.disabled = false;
+                    });
+                }
+            })
+            .catch(() => {
+                actionsEl.style.display = '';
+                actionsEl.querySelectorAll('button').forEach(b => {
+                    b.disabled = false;
+                });
+            });
     }
-}
 
-function escHtml(str) {
-    return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
+    function updateLoiMoiBadge(delta) {
+        const tabBtn = document.querySelector('[data-bs-target="#loi-moi"]');
+        if (!tabBtn) return;
+        let badge = tabBtn.querySelector('.badge');
+        const newVal = (badge ? parseInt(badge.textContent) : 0) + delta;
+        if (newVal <= 0) {
+            if (badge) badge.remove();
+        } else {
+            if (!badge) {
+                badge = document.createElement('span');
+                badge.className = 'badge bg-danger ms-1';
+                tabBtn.appendChild(badge);
+            }
+            badge.textContent = newVal;
+        }
+    }
+
+    function escHtml(str) {
+        return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
 </script>
