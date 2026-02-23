@@ -8,45 +8,49 @@ require_once _PATH_URL . '/modules/functions/quan_ly_su_kien.php';
 // =============================================
 // PHIÊN + QUYỀN
 // =============================================
-$user_role = isset($_SESSION['role'])    ? $_SESSION['role']               : 'guest';
-$user_id   = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id']       : 0;
+$user_role = isset($_SESSION['role'])    ? $_SESSION['role']         : 'guest';
+$user_id   = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
 
 $event_created = false;
 $event_error   = '';
 
-// Đọc flash message từ session
 if (getSessionFlash('event_created')) {
     $event_created = true;
 }
 
-// Kiểm tra đúng quyền 'tao_su_kien'
-$can_create_event = ($user_id > 0) ? kiem_tra_quyen_he_thong($conn, $user_id, 'tao_su_kien') : false;
+$can_create_event = ($user_id > 0)
+    ? kiem_tra_quyen_he_thong($conn, $user_id, 'tao_su_kien')
+    : false;
 
 // =============================================
-// XỬ LÝ TẠO SỰ KIỆN — chỉ khi có quyền
+// XỬ LÝ TẠO SỰ KIỆN
 // =============================================
-if (isPost() && isset($_POST['create_event']) && $can_create_event) {
+if (isPost() && isset($_POST['action_type']) && $can_create_event) {
     $filterData = filter();
 
-    $tenSK          = trim($filterData['tenSK']          ?? '');
-    $moTa           = trim($filterData['moTa']           ?? '');
-    $idCap          = (int)($filterData['idCap']         ?? 0);
-    $isActive       = isset($filterData['isActive']) ? (int)$filterData['isActive'] : 1;
+    $action_type = in_array($filterData['action_type'] ?? '', ['draft', 'publish'])
+        ? $filterData['action_type'] : 'draft';
+    $isActive    = ($action_type === 'publish') ? 1 : 0;
 
-    // Dùng datetime-local → chuyển sang Y-m-d H:i:s
-    $ngayMoDangKy   = !empty($filterData['ngayMoDangKy'])
-        ? date('Y-m-d H:i:s', strtotime($filterData['ngayMoDangKy'])) : '';
-    $ngayDongDangKy = !empty($filterData['ngayDongDangKy'])
-        ? date('Y-m-d H:i:s', strtotime($filterData['ngayDongDangKy'])) : '';
-    $ngayBatDau     = !empty($filterData['ngayBatDau'])
-        ? date('Y-m-d H:i:s', strtotime($filterData['ngayBatDau']))     : '';
-    $ngayKetThuc    = !empty($filterData['ngayKetThuc'])
-        ? date('Y-m-d H:i:s', strtotime($filterData['ngayKetThuc']))    : '';
+    $tenSK = trim($filterData['tenSK'] ?? '');
+    $moTa  = trim($filterData['moTa']  ?? '');
+    $idCap = !empty($filterData['idCap']) ? (int)$filterData['idCap'] : null;
+
+    $parse_dt = function ($v) {
+        return !empty($v) ? date('Y-m-d H:i:s', strtotime($v)) : '';
+    };
+
+    $ngayMoDangKy   = $parse_dt($filterData['ngayMoDangKy']   ?? '');
+    $ngayDongDangKy = $parse_dt($filterData['ngayDongDangKy'] ?? '');
+    $ngayBatDau     = $parse_dt($filterData['ngayBatDau']     ?? '');
+    $ngayKetThuc    = $parse_dt($filterData['ngayKetThuc']    ?? '');
 
     $errors = [];
 
     if ($tenSK === '') {
         $errors[] = 'Tên sự kiện không được để trống.';
+    } elseif (mb_strlen($tenSK) > 300) {
+        $errors[] = 'Tên sự kiện không được vượt quá 300 ký tự.';
     }
     if (
         !empty($ngayMoDangKy) && !empty($ngayDongDangKy)
@@ -64,13 +68,12 @@ if (isPost() && isset($_POST['create_event']) && $can_create_event) {
     if (!empty($errors)) {
         $event_error = implode('<br>', $errors);
     } else {
-        // Tái sử dụng hàm từ quan_ly_su_kien.php
         $result = btc_tao_su_kien(
             $conn,
             $user_id,
             $tenSK,
             $moTa,
-            $idCap > 0 ? $idCap : null,
+            $idCap,
             $ngayMoDangKy   ?: null,
             $ngayDongDangKy ?: null,
             $ngayBatDau     ?: null,
@@ -79,9 +82,8 @@ if (isPost() && isset($_POST['create_event']) && $can_create_event) {
         );
 
         if ($result['status']) {
-            // PRG pattern: redirect sau khi tạo thành công → tránh resubmit khi F5
             setSessionFlash('event_created', true);
-            header('Location: ' . _HOST_URL . '/?module=event&action=index');
+            header('Location: ' . _HOST_URL . '/?module=event&action=view&id=' . $result['idSK']);
             exit;
         } else {
             $event_error = $result['message'] ?? 'Không tạo được sự kiện.';
@@ -92,12 +94,12 @@ if (isPost() && isset($_POST['create_event']) && $can_create_event) {
 // =============================================
 // LỌC + TÌM KIẾM
 // =============================================
-$search      = isset($_GET['search'])      ? trim($_GET['search'])                    : '';
-$search_safe = $search !== ''              ? chuan_hoa_chuoi_sql($conn, $search)      : '';
-$filter_cap  = isset($_GET['filter_cap'])  ? (int)$_GET['filter_cap']                : 0;
-$filter_time = isset($_GET['filter_time']) ? trim($_GET['filter_time'])               : '';
+$search      = isset($_GET['search'])      ? trim($_GET['search'])               : '';
+$search_safe = $search !== ''              ? chuan_hoa_chuoi_sql($conn, $search) : '';
+$filter_cap  = isset($_GET['filter_cap'])  ? (int)$_GET['filter_cap']            : 0;
+$filter_time = isset($_GET['filter_time']) ? trim($_GET['filter_time'])           : '';
 
-$data = ['page_title' => $can_create_event ? 'Quản lý sự kiện' : 'Sự kiện'];
+$data        = ['page_title' => $can_create_event ? 'Quản lý sự kiện' : 'Sự kiện'];
 $active_page = 'event';
 
 // =============================================
@@ -107,9 +109,17 @@ $per_page = 8;
 $cur_page = isset($_GET['page']) ? max(1, (int)$_GET['page']) : 1;
 
 // =============================================
-// XÂY DỰNG WHERE CLAUSE
+// WHERE CLAUSE — BTC thấy sự kiện ẩn của mình
 // =============================================
-$where = "WHERE sk.isActive = 1";
+if ($user_id > 0) {
+    $where = "WHERE (sk.isActive = 1
+               OR (sk.isActive = 0 AND EXISTS (
+                   SELECT 1 FROM taikhoan_vaitro_sukien tvs
+                   WHERE tvs.idSK = sk.idSK AND tvs.idTK = $user_id AND tvs.isActive = 1
+               )))";
+} else {
+    $where = "WHERE sk.isActive = 1";
+}
 
 if (!empty($search_safe)) {
     $where .= " AND (sk.tenSK LIKE '%$search_safe%' OR sk.moTa LIKE '%$search_safe%')";
@@ -117,18 +127,22 @@ if (!empty($search_safe)) {
 if ($filter_cap > 0) {
     $where .= " AND sk.idCap = $filter_cap";
 }
-if ($filter_time === 'today') {
-    $where .= " AND DATE(sk.ngayBatDau) = CURDATE()";
-} elseif ($filter_time === 'week') {
-    $where .= " AND sk.ngayBatDau BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 7 DAY)";
-} elseif ($filter_time === 'month') {
-    $where .= " AND sk.ngayBatDau BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 1 MONTH)";
-} elseif ($filter_time === 'quarter') {
-    $where .= " AND sk.ngayBatDau BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 3 MONTH)";
+
+$valid_times = ['today', 'week', 'month', 'quarter'];
+if (in_array($filter_time, $valid_times, true)) {
+    if ($filter_time === 'today') {
+        $where .= " AND DATE(sk.ngayBatDau) = CURDATE()";
+    } elseif ($filter_time === 'week') {
+        $where .= " AND sk.ngayBatDau BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 7 DAY)";
+    } elseif ($filter_time === 'month') {
+        $where .= " AND sk.ngayBatDau BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 1 MONTH)";
+    } elseif ($filter_time === 'quarter') {
+        $where .= " AND sk.ngayBatDau BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 3 MONTH)";
+    }
 }
 
 // =============================================
-// ĐẾM TỔNG — dùng cho pagination
+// PAGINATION COUNT + QUERY
 // =============================================
 $cnt_res     = mysqli_query($conn, "SELECT COUNT(*) as c FROM sukien sk $where");
 $total_count = (int)mysqli_fetch_assoc($cnt_res)['c'];
@@ -136,23 +150,18 @@ $total_pages = max(1, ceil($total_count / $per_page));
 $cur_page    = min($cur_page, $total_pages);
 $offset      = ($cur_page - 1) * $per_page;
 
-// =============================================
-// DANH SÁCH SỰ KIỆN — ORDER BY ưu tiên đang mở đăng ký (giống code cũ)
-// =============================================
-$sql = "SELECT sk.*, ct.tenCap, tk.tenTK as nguoiTaoTen
+$sql = "SELECT sk.*, ct.tenCap, lc.tenLoaiCap, tk.tenTK as nguoiTaoTen
         FROM sukien sk
-        LEFT JOIN cap_tochuc ct ON sk.idCap = ct.idCap
-        LEFT JOIN taikhoan tk ON sk.nguoiTao = tk.idTK
+        LEFT JOIN cap_tochuc ct ON sk.idCap  = ct.idCap
+        LEFT JOIN loaicap lc    ON ct.idLoaiCap = lc.idLoaiCap
+        LEFT JOIN taikhoan tk   ON sk.nguoiTao  = tk.idTK
         $where
         ORDER BY
             CASE
-                WHEN sk.ngayMoDangKy IS NOT NULL
-                     AND sk.ngayDongDangKy IS NOT NULL
-                     AND CURDATE() BETWEEN sk.ngayMoDangKy AND sk.ngayDongDangKy THEN 1
-                WHEN sk.ngayMoDangKy IS NOT NULL
-                     AND CURDATE() < sk.ngayMoDangKy THEN 2
-                WHEN sk.ngayDongDangKy IS NOT NULL
-                     AND CURDATE() > sk.ngayDongDangKy THEN 3
+                WHEN sk.ngayMoDangKy IS NOT NULL AND sk.ngayDongDangKy IS NOT NULL
+                     AND NOW() BETWEEN sk.ngayMoDangKy AND sk.ngayDongDangKy THEN 1
+                WHEN sk.ngayMoDangKy IS NOT NULL AND NOW() < sk.ngayMoDangKy THEN 2
+                WHEN sk.ngayDongDangKy IS NOT NULL AND NOW() > sk.ngayDongDangKy THEN 3
                 ELSE 4
             END,
             sk.idSK DESC
@@ -161,42 +170,61 @@ $sql = "SELECT sk.*, ct.tenCap, tk.tenTK as nguoiTaoTen
 $result = mysqli_query($conn, $sql);
 $events = [];
 if ($result && mysqli_num_rows($result) > 0) {
-    while ($row = mysqli_fetch_assoc($result)) {
-        $events[] = $row;
+    while ($row = mysqli_fetch_assoc($result)) $events[] = $row;
+}
+
+// =============================================
+// DỮ LIỆU FORM — loại cấp + cascade cap
+// =============================================
+$res_loaicap = mysqli_query($conn, "SELECT * FROM loaicap ORDER BY idLoaiCap");
+$loaicaps    = [];
+if ($res_loaicap) {
+    while ($row = mysqli_fetch_assoc($res_loaicap)) $loaicaps[] = $row;
+}
+
+$res_all_cap  = mysqli_query($conn, "SELECT * FROM cap_tochuc ORDER BY idLoaiCap, tenCap");
+$all_caps     = [];
+$caps_by_loai = [];
+if ($res_all_cap) {
+    while ($row = mysqli_fetch_assoc($res_all_cap)) {
+        $all_caps[]                        = $row;
+        $caps_by_loai[$row['idLoaiCap']][] = $row;
+    }
+}
+
+// Template sự kiện cũ
+$templates = [];
+if ($can_create_event && $user_id > 0) {
+    $sql_tpl = "SELECT sk.idSK, sk.tenSK, sk.moTa, sk.idCap, ct.idLoaiCap
+                FROM sukien sk
+                LEFT JOIN cap_tochuc ct ON sk.idCap = ct.idCap
+                JOIN taikhoan_vaitro_sukien tvs
+                     ON tvs.idSK = sk.idSK AND tvs.idTK = $user_id AND tvs.isActive = 1
+                ORDER BY sk.idSK DESC LIMIT 20";
+    $res_tpl = mysqli_query($conn, $sql_tpl);
+    if ($res_tpl) {
+        while ($row = mysqli_fetch_assoc($res_tpl)) $templates[] = $row;
     }
 }
 
 // =============================================
-// DANH SÁCH CẤP TỔ CHỨC — cho filter + modal
+// UPCOMING EVENTS — sidebar
 // =============================================
-$sql_cap    = "SELECT * FROM cap_tochuc ORDER BY tenCap";
-$result_cap = mysqli_query($conn, $sql_cap);
-$caps       = [];
-if ($result_cap) {
-    while ($row = mysqli_fetch_assoc($result_cap)) {
-        $caps[] = $row;
-    }
-}
-
-// =============================================
-// SỰ KIỆN SẮP DIỄN RA — sidebar upcoming widget
-// =============================================
-$sql_upcoming    = "SELECT sk.idSK, sk.tenSK, sk.ngayBatDau, ct.tenCap
-                    FROM sukien sk
-                    LEFT JOIN cap_tochuc ct ON sk.idCap = ct.idCap
-                    WHERE sk.isActive = 1 AND sk.ngayBatDau >= NOW()
-                    ORDER BY sk.ngayBatDau ASC
-                    LIMIT 5";
-$result_upcoming = mysqli_query($conn, $sql_upcoming);
+$res_upcoming = mysqli_query(
+    $conn,
+    "SELECT sk.idSK, sk.tenSK, sk.ngayBatDau, ct.tenCap
+     FROM sukien sk
+     LEFT JOIN cap_tochuc ct ON sk.idCap = ct.idCap
+     WHERE sk.isActive = 1 AND sk.ngayBatDau >= NOW()
+     ORDER BY sk.ngayBatDau ASC LIMIT 5"
+);
 $upcoming_events = [];
-if ($result_upcoming) {
-    while ($row = mysqli_fetch_assoc($result_upcoming)) {
-        $upcoming_events[] = $row;
-    }
+if ($res_upcoming) {
+    while ($row = mysqli_fetch_assoc($res_upcoming)) $upcoming_events[] = $row;
 }
 
 // =============================================
-// HELPER: tạo URL giữ nguyên filter khi phân trang
+// HELPER: URL phân trang giữ filter
 // =============================================
 function event_page_url($page, $search, $filter_cap, $filter_time)
 {
@@ -212,149 +240,152 @@ layout('navbar');
 ?>
 
 <!-- =============================================
-     MODAL TẠO SỰ KIỆN — chỉ render nếu có quyền
+     MODAL TẠO SỰ KIỆN
      ============================================= -->
 <?php if ($can_create_event): ?>
     <div class="modal fade" id="createEventModal" tabindex="-1" aria-labelledby="createEventModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
             <div class="modal-content border-0">
                 <div class="modal-body p-0">
                     <div class="enrollment-form-wrapper">
 
-                        <div class="enrollment-header text-center mb-4 pt-4 px-4 position-relative">
+                        <div class="enrollment-header text-center mb-3 pt-4 px-4 position-relative">
                             <button type="button" class="btn-close position-absolute top-0 end-0 m-3"
                                 data-bs-dismiss="modal" aria-label="Close"></button>
                             <h2>Tạo sự kiện mới</h2>
-                            <p>Điền thông tin bên dưới để tạo và công bố sự kiện.</p>
+                            <p class="text-muted mb-0">Các trường ngày có thể để trống và cấu hình sau.</p>
                         </div>
 
                         <form class="enrollment-form px-4 pb-4" id="createEventForm"
-                            action="<?php echo _HOST_URL; ?>/?module=event&action=index" method="post" novalidate>
+                            action="<?= _HOST_URL ?>/?module=event&action=index" method="post" novalidate>
 
                             <?php if (!empty($event_error)): ?>
-                                <div class="alert alert-danger d-flex align-items-center gap-2 mb-4">
-                                    <i class="bi bi-exclamation-triangle-fill"></i>
-                                    <?php echo $event_error; ?>
+                                <div class="alert alert-danger d-flex align-items-center gap-2 mb-3">
+                                    <i class="bi bi-exclamation-triangle-fill flex-shrink-0"></i>
+                                    <div><?= $event_error ?></div>
                                 </div>
                             <?php endif; ?>
 
+                            <!-- Template -->
+                            <?php if (!empty($templates)): ?>
+                                <div class="mb-4">
+                                    <label for="templateSelect" class="form-label fw-semibold">
+                                        <i class="bi bi-copy me-1 text-secondary"></i>Sao chép từ sự kiện cũ
+                                        <span class="text-muted fw-normal small">(tuỳ chọn)</span>
+                                    </label>
+                                    <select class="form-select" id="templateSelect">
+                                        <option value="">-- Bắt đầu từ đầu --</option>
+                                        <?php foreach ($templates as $tpl): ?>
+                                            <option value="<?= (int)$tpl['idSK'] ?>"
+                                                data-ten="<?= htmlspecialchars($tpl['tenSK']) ?>"
+                                                data-mota="<?= htmlspecialchars($tpl['moTa'] ?? '') ?>"
+                                                data-idcap="<?= (int)($tpl['idCap'] ?? 0) ?>"
+                                                data-idloaicap="<?= (int)($tpl['idLoaiCap'] ?? 0) ?>">
+                                                <?= htmlspecialchars($tpl['tenSK']) ?>
+                                            </option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                    <div class="form-text">Tự động điền tên, mô tả, cấp tổ chức — ngày tháng để trống.</div>
+                                </div>
+                                <hr class="my-3">
+                            <?php endif; ?>
+
                             <!-- Tên sự kiện -->
-                            <div class="row mb-4">
-                                <div class="col-12">
-                                    <div class="form-group">
-                                        <label for="tenSK" class="form-label">
-                                            Tên sự kiện <span class="text-danger">*</span>
-                                        </label>
-                                        <input type="text" class="form-control" id="tenSK" name="tenSK"
-                                            placeholder="Nhập tên sự kiện..." required
-                                            value="<?= isset($_POST['tenSK']) ? htmlspecialchars($_POST['tenSK']) : '' ?>">
-                                        <div class="invalid-feedback">Vui lòng nhập tên sự kiện.</div>
-                                    </div>
+                            <div class="mb-4">
+                                <label for="tenSK" class="form-label">
+                                    Tên sự kiện <span class="text-danger">*</span>
+                                </label>
+                                <input type="text" class="form-control" id="tenSK" name="tenSK"
+                                    placeholder="Nhập tên sự kiện..." required maxlength="300"
+                                    value="<?= isset($_POST['tenSK']) ? htmlspecialchars($_POST['tenSK']) : '' ?>">
+                                <div class="invalid-feedback">Vui lòng nhập tên sự kiện.</div>
+                                <div id="nameWarning"
+                                    class="alert alert-warning d-flex align-items-center gap-2 mt-2 py-2 d-none">
+                                    <i class="bi bi-exclamation-triangle-fill flex-shrink-0"></i>
+                                    <div id="nameWarningText"></div>
                                 </div>
                             </div>
 
                             <!-- Mô tả -->
+                            <div class="mb-4">
+                                <label for="moTa" class="form-label">Mô tả sự kiện</label>
+                                <textarea class="form-control" id="moTa" name="moTa" rows="3"
+                                    placeholder="Mục tiêu và nội dung của sự kiện..."><?= isset($_POST['moTa']) ? htmlspecialchars($_POST['moTa']) : '' ?></textarea>
+                            </div>
+
+                            <!-- Cascade Cấp → Đơn vị -->
                             <div class="row mb-4">
-                                <div class="col-12">
-                                    <div class="form-group">
-                                        <label for="moTa" class="form-label">Mô tả sự kiện</label>
-                                        <textarea class="form-control" id="moTa" name="moTa" rows="3"
-                                            placeholder="Mục tiêu và nội dung của sự kiện..."><?= isset($_POST['moTa']) ? htmlspecialchars($_POST['moTa']) : '' ?></textarea>
-                                    </div>
+                                <div class="col-md-6">
+                                    <label for="idLoaiCap" class="form-label">Cấp tổ chức</label>
+                                    <select class="form-select" id="idLoaiCap" name="idLoaiCap">
+                                        <option value="">-- Chọn cấp --</option>
+                                        <?php foreach ($loaicaps as $lc): ?>
+                                            <option value="<?= (int)$lc['idLoaiCap'] ?>"
+                                                <?= (isset($_POST['idLoaiCap']) && $_POST['idLoaiCap'] == $lc['idLoaiCap']) ? 'selected' : '' ?>>
+                                                <?= htmlspecialchars($lc['tenLoaiCap']) ?>
+                                            </option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                </div>
+                                <div class="col-md-6">
+                                    <label for="idCap" class="form-label">Đơn vị tổ chức</label>
+                                    <select class="form-select" id="idCap" name="idCap" disabled>
+                                        <option value="">-- Chọn cấp trước --</option>
+                                    </select>
                                 </div>
                             </div>
 
-                            <!-- Cấp tổ chức + Trạng thái -->
+                            <!-- Thời gian đăng ký -->
+                            <p class="fw-semibold mb-2 text-secondary small text-uppercase letter-spacing-1">
+                                <i class="bi bi-calendar-check me-1"></i>Thời gian đăng ký
+                                <span class="fw-normal text-muted">(tuỳ chọn)</span>
+                            </p>
                             <div class="row mb-4">
                                 <div class="col-md-6">
-                                    <div class="form-group">
-                                        <label for="idCap" class="form-label">Cấp tổ chức</label>
-                                        <select class="form-select" id="idCap" name="idCap">
-                                            <option value="">-- Chọn cấp tổ chức --</option>
-                                            <?php foreach ($caps as $cap): ?>
-                                                <option value="<?= $cap['idCap'] ?>"
-                                                    <?= (isset($_POST['idCap']) && $_POST['idCap'] == $cap['idCap']) ? 'selected' : '' ?>>
-                                                    <?= htmlspecialchars($cap['tenCap']) ?>
-                                                </option>
-                                            <?php endforeach; ?>
-                                        </select>
-                                    </div>
+                                    <label for="ngayMoDangKy" class="form-label">Mở đăng ký</label>
+                                    <input type="datetime-local" class="form-control" id="ngayMoDangKy" name="ngayMoDangKy"
+                                        value="<?= isset($_POST['ngayMoDangKy']) ? htmlspecialchars($_POST['ngayMoDangKy']) : '' ?>">
+                                    <div class="invalid-feedback" id="err-ngayMoDangKy"></div>
                                 </div>
                                 <div class="col-md-6">
-                                    <div class="form-group">
-                                        <label class="form-label">Trạng thái <span class="text-danger">*</span></label>
-                                        <div class="schedule-options">
-                                            <div class="form-check">
-                                                <input class="form-check-input" type="radio" name="isActive" id="isActive1"
-                                                    value="1"
-                                                    <?= (!isset($_POST['isActive']) || $_POST['isActive'] == 1) ? 'checked' : '' ?>>
-                                                <label class="form-check-label" for="isActive1">
-                                                    <i class="bi bi-eye me-1 text-success"></i> Công khai
-                                                </label>
-                                            </div>
-                                            <div class="form-check">
-                                                <input class="form-check-input" type="radio" name="isActive" id="isActive0"
-                                                    value="0"
-                                                    <?= (isset($_POST['isActive']) && $_POST['isActive'] == 0) ? 'checked' : '' ?>>
-                                                <label class="form-check-label" for="isActive0">
-                                                    <i class="bi bi-eye-slash me-1 text-secondary"></i> Ẩn
-                                                </label>
-                                            </div>
-                                        </div>
-                                    </div>
+                                    <label for="ngayDongDangKy" class="form-label">Đóng đăng ký</label>
+                                    <input type="datetime-local" class="form-control" id="ngayDongDangKy"
+                                        name="ngayDongDangKy"
+                                        value="<?= isset($_POST['ngayDongDangKy']) ? htmlspecialchars($_POST['ngayDongDangKy']) : '' ?>">
+                                    <div class="invalid-feedback" id="err-ngayDongDangKy"></div>
                                 </div>
                             </div>
 
-                            <!-- Ngày mở / đóng đăng ký -->
+                            <!-- Thời gian sự kiện -->
+                            <p class="fw-semibold mb-2 text-secondary small text-uppercase">
+                                <i class="bi bi-calendar-event me-1"></i>Thời gian sự kiện
+                                <span class="fw-normal text-muted">(tuỳ chọn)</span>
+                            </p>
                             <div class="row mb-4">
                                 <div class="col-md-6">
-                                    <div class="form-group">
-                                        <label for="ngayMoDangKy" class="form-label">Ngày mở đăng ký</label>
-                                        <input type="datetime-local" class="form-control" id="ngayMoDangKy"
-                                            name="ngayMoDangKy"
-                                            value="<?= isset($_POST['ngayMoDangKy']) ? htmlspecialchars($_POST['ngayMoDangKy']) : '' ?>">
-                                        <div class="invalid-feedback" id="err-ngayMoDangKy"></div>
-                                    </div>
+                                    <label for="ngayBatDau" class="form-label">Bắt đầu</label>
+                                    <input type="datetime-local" class="form-control" id="ngayBatDau" name="ngayBatDau"
+                                        value="<?= isset($_POST['ngayBatDau']) ? htmlspecialchars($_POST['ngayBatDau']) : '' ?>">
+                                    <div class="invalid-feedback" id="err-ngayBatDau"></div>
                                 </div>
                                 <div class="col-md-6">
-                                    <div class="form-group">
-                                        <label for="ngayDongDangKy" class="form-label">Ngày đóng đăng ký</label>
-                                        <input type="datetime-local" class="form-control" id="ngayDongDangKy"
-                                            name="ngayDongDangKy"
-                                            value="<?= isset($_POST['ngayDongDangKy']) ? htmlspecialchars($_POST['ngayDongDangKy']) : '' ?>">
-                                        <div class="invalid-feedback" id="err-ngayDongDangKy"></div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Ngày bắt đầu / kết thúc -->
-                            <div class="row mb-4">
-                                <div class="col-md-6">
-                                    <div class="form-group">
-                                        <label for="ngayBatDau" class="form-label">Ngày bắt đầu</label>
-                                        <input type="datetime-local" class="form-control" id="ngayBatDau" name="ngayBatDau"
-                                            value="<?= isset($_POST['ngayBatDau']) ? htmlspecialchars($_POST['ngayBatDau']) : '' ?>">
-                                        <div class="invalid-feedback" id="err-ngayBatDau"></div>
-                                    </div>
-                                </div>
-                                <div class="col-md-6">
-                                    <div class="form-group">
-                                        <label for="ngayKetThuc" class="form-label">Ngày kết thúc</label>
-                                        <input type="datetime-local" class="form-control" id="ngayKetThuc"
-                                            name="ngayKetThuc"
-                                            value="<?= isset($_POST['ngayKetThuc']) ? htmlspecialchars($_POST['ngayKetThuc']) : '' ?>">
-                                        <div class="invalid-feedback" id="err-ngayKetThuc"></div>
-                                    </div>
+                                    <label for="ngayKetThuc" class="form-label">Kết thúc</label>
+                                    <input type="datetime-local" class="form-control" id="ngayKetThuc" name="ngayKetThuc"
+                                        value="<?= isset($_POST['ngayKetThuc']) ? htmlspecialchars($_POST['ngayKetThuc']) : '' ?>">
+                                    <div class="invalid-feedback" id="err-ngayKetThuc"></div>
                                 </div>
                             </div>
 
                             <!-- Submit -->
-                            <div class="row">
-                                <div class="col-12 d-flex justify-content-between align-items-center">
-                                    <button type="button" class="btn btn-outline-secondary"
-                                        data-bs-dismiss="modal">Hủy</button>
-                                    <button type="submit" name="create_event" value="1" class="btn btn-primary btn-enroll">
-                                        <i class="bi bi-check-circle me-2"></i>Tạo sự kiện
+                            <div class="d-flex justify-content-between align-items-center gap-2 pt-3 border-top">
+                                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Hủy</button>
+                                <div class="d-flex gap-2">
+                                    <button type="submit" name="action_type" value="draft" class="btn btn-outline-primary">
+                                        <i class="bi bi-save me-1"></i>Lưu nháp
+                                    </button>
+                                    <button type="submit" name="action_type" value="publish"
+                                        class="btn btn-primary btn-enroll">
+                                        <i class="bi bi-send me-1"></i>Tạo &amp; Công khai
                                     </button>
                                 </div>
                             </div>
@@ -367,43 +398,27 @@ layout('navbar');
     </div>
 <?php endif; ?>
 
-<!-- Toast thành công -->
-<?php if ($event_created): ?>
-    <div class="position-fixed top-0 end-0 p-3" style="z-index:9999;">
-        <div id="successToast" class="toast show align-items-center text-bg-success border-0" role="alert">
-            <div class="d-flex">
-                <div class="toast-body">
-                    <i class="bi bi-check-circle me-2"></i>Sự kiện đã được tạo thành công!
-                </div>
-                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
-            </div>
-        </div>
-    </div>
-<?php endif; ?>
-
 <main class="main">
 
-    <!-- Page Title -->
     <div class="page-title light-background">
         <div class="container d-lg-flex justify-content-between align-items-center">
             <h1 class="mb-2 mb-lg-0">
-                <?php echo $can_create_event ? 'Quản lý sự kiện' : 'Sự kiện'; ?>
+                <?= $can_create_event ? 'Quản lý sự kiện' : 'Sự kiện' ?>
             </h1>
             <nav class="breadcrumbs">
                 <ol>
-                    <li><a href="<?php echo _HOST_URL; ?>">Home</a></li>
+                    <li><a href="<?= _HOST_URL ?>">Home</a></li>
                     <li class="current">Events</li>
                 </ol>
             </nav>
         </div>
     </div>
 
-    <!-- Courses Events Section -->
     <section id="courses-events" class="courses-events section">
         <div class="container" data-aos="fade-up" data-aos-delay="100">
             <div class="row">
 
-                <!-- ===== DANH SÁCH SỰ KIỆN ===== -->
+                <!-- Danh sách sự kiện -->
                 <div class="col-lg-8">
 
                     <?php if (empty($events)): ?>
@@ -411,8 +426,7 @@ layout('navbar');
                             <i class="bi bi-calendar-x" style="font-size:3rem;color:#ccc;"></i>
                             <p class="mt-3 text-muted">
                                 Không tìm thấy sự kiện nào<?= !empty($search)
-                                                                ? ' cho từ khóa "<strong>' . htmlspecialchars($search) . '</strong>"'
-                                                                : '' ?>.
+                                                                ? ' cho từ khóa "<strong>' . htmlspecialchars($search) . '</strong>"' : '' ?>.
                             </p>
                         </div>
                     <?php endif; ?>
@@ -424,22 +438,24 @@ layout('navbar');
                         $ts_moDangKy   = !empty($event['ngayMoDangKy'])   ? strtotime($event['ngayMoDangKy'])   : 0;
                         $ts_dongDangKy = !empty($event['ngayDongDangKy']) ? strtotime($event['ngayDongDangKy']) : 0;
 
-                        // Badge — dùng Bootstrap class, nhất quán với document
-                        if ($ts_moDangKy && $ts_dongDangKy) {
+                        if ($event['isActive'] == 0) {
+                            $trangThai  = 'Bản nháp';
+                            $badgeClass = 'bg-secondary';
+                        } elseif ($ts_moDangKy && $ts_dongDangKy) {
                             if ($ts_now < $ts_moDangKy) {
-                                $trangThai  = 'Sắp mở đăng ký';
+                                $trangThai = 'Sắp mở đăng ký';
                                 $badgeClass = 'bg-info text-dark';
-                            } elseif ($ts_now >= $ts_moDangKy && $ts_now <= $ts_dongDangKy) {
-                                $trangThai  = 'Đang mở đăng ký';
+                            } elseif ($ts_now <= $ts_dongDangKy) {
+                                $trangThai = 'Đang mở đăng ký';
                                 $badgeClass = 'bg-success';
-                            } elseif ($ts_now > $ts_dongDangKy && ($ts_batDau === 0 || $ts_now < $ts_batDau)) {
-                                $trangThai  = 'Đã đóng đăng ký';
+                            } elseif ($ts_batDau === 0 || $ts_now < $ts_batDau) {
+                                $trangThai = 'Đã đóng đăng ký';
                                 $badgeClass = 'bg-warning text-dark';
-                            } elseif ($ts_batDau && $ts_now >= $ts_batDau && ($ts_ketThuc === 0 || $ts_now <= $ts_ketThuc)) {
-                                $trangThai  = 'Đang diễn ra';
+                            } elseif ($ts_ketThuc === 0 || $ts_now <= $ts_ketThuc) {
+                                $trangThai = 'Đang diễn ra';
                                 $badgeClass = 'bg-primary';
                             } else {
-                                $trangThai  = 'Đã kết thúc';
+                                $trangThai = 'Đã kết thúc';
                                 $badgeClass = 'bg-secondary';
                             }
                         } else {
@@ -453,13 +469,18 @@ layout('navbar');
                         <article class="event-card" data-aos="fade-up" data-aos-delay="200">
                             <div class="row g-0">
                                 <div class="col-md-4">
-                                    <div class="event-image">
+                                    <div class="event-image position-relative">
                                         <img src="<?= _HOST_URL_TEMPLATES ?>/assets/img/education/events-3.webp"
                                             class="img-fluid" alt="Event Image">
                                         <div class="date-badge">
                                             <span class="day"><?= $ts_batDau ? date('d', $ts_batDau) : '--' ?></span>
                                             <span class="month"><?= $ts_batDau ? date('M', $ts_batDau) : '--' ?></span>
                                         </div>
+                                        <?php if ($event['isActive'] == 0): ?>
+                                            <span class="position-absolute top-0 start-0 m-2 badge bg-secondary opacity-90">
+                                                <i class="bi bi-eye-slash me-1"></i>Nháp
+                                            </span>
+                                        <?php endif; ?>
                                     </div>
                                 </div>
                                 <div class="col-md-8">
@@ -469,16 +490,18 @@ layout('navbar');
                                                 <i class="bi bi-clock"></i>
                                                 <?= $ngayBatDau_f ?> – <?= $ngayKetThuc_f ?>
                                             </span>
-                                            <?php if (!empty($event['tenCap'])): ?>
-                                                <span class="location">
-                                                    <i class="bi bi-building"></i>
+                                            <span class="location">
+                                                <i class="bi bi-building"></i>
+                                                <?php if (!empty($event['tenCap'])): ?>
                                                     <?= htmlspecialchars($event['tenCap']) ?>
-                                                </span>
-                                            <?php else: ?>
-                                                <span class="location">
-                                                    <i class="bi bi-geo-alt"></i> Online Webinar
-                                                </span>
-                                            <?php endif; ?>
+                                                    <?php if (!empty($event['tenLoaiCap'])): ?>
+                                                        <small
+                                                            class="text-muted">(<?= htmlspecialchars($event['tenLoaiCap']) ?>)</small>
+                                                    <?php endif; ?>
+                                                <?php else: ?>
+                                                    <span class="text-muted">Chưa xác định</span>
+                                                <?php endif; ?>
+                                            </span>
                                         </div>
 
                                         <h3 class="event-title">
@@ -499,11 +522,9 @@ layout('navbar');
                                                     alt="BTC" class="instructor-avatar">
                                                 <span><?= htmlspecialchars($event['nguoiTaoTen'] ?? 'BTC') ?></span>
                                             </div>
-                                            <div class="event-price">
-                                                <span class="badge <?= $badgeClass ?>" style="font-size:0.75rem;">
-                                                    <?= $trangThai ?>
-                                                </span>
-                                            </div>
+                                            <span class="badge <?= $badgeClass ?>" style="font-size:.75rem;">
+                                                <?= $trangThai ?>
+                                            </span>
                                         </div>
 
                                         <div class="event-actions">
@@ -518,12 +539,11 @@ layout('navbar');
                         </article>
                     <?php endforeach; ?>
 
-                    <!-- ===== PAGINATION ===== -->
+                    <!-- Pagination -->
                     <?php if ($total_pages > 1): ?>
-                        <div class="pagination-wrapper mt-4" data-aos="fade-up" data-aos-delay="300">
+                        <div class="pagination-wrapper mt-4">
                             <nav aria-label="Events pagination">
                                 <ul class="pagination justify-content-center">
-                                    <!-- Prev -->
                                     <li class="page-item <?= $cur_page <= 1 ? 'disabled' : '' ?>">
                                         <a class="page-link"
                                             href="<?= event_page_url($cur_page - 1, $search, $filter_cap, $filter_time) ?>">
@@ -534,30 +554,24 @@ layout('navbar');
                                     $start_p = max(1, $cur_page - 2);
                                     $end_p   = min($total_pages, $cur_page + 2);
                                     if ($start_p > 1): ?>
-                                        <li class="page-item">
-                                            <a class="page-link"
-                                                href="<?= event_page_url(1, $search, $filter_cap, $filter_time) ?>">1</a>
-                                        </li>
-                                        <?php if ($start_p > 2): ?>
-                                            <li class="page-item disabled"><span class="page-link">…</span></li>
-                                        <?php endif; ?>
-                                    <?php endif; ?>
-                                    <?php for ($p = $start_p; $p <= $end_p; $p++): ?>
+                                        <li class="page-item"><a class="page-link"
+                                                href="<?= event_page_url(1, $search, $filter_cap, $filter_time) ?>">1</a></li>
+                                        <?php if ($start_p > 2): ?><li class="page-item disabled"><span
+                                                    class="page-link">…</span></li><?php endif; ?>
+                                    <?php endif;
+                                    for ($p = $start_p; $p <= $end_p; $p++): ?>
                                         <li class="page-item <?= $p == $cur_page ? 'active' : '' ?>">
                                             <a class="page-link"
                                                 href="<?= event_page_url($p, $search, $filter_cap, $filter_time) ?>"><?= $p ?></a>
                                         </li>
-                                    <?php endfor; ?>
-                                    <?php if ($end_p < $total_pages): ?>
-                                        <?php if ($end_p < $total_pages - 1): ?>
-                                            <li class="page-item disabled"><span class="page-link">…</span></li>
-                                        <?php endif; ?>
-                                        <li class="page-item">
-                                            <a class="page-link"
+                                    <?php endfor;
+                                    if ($end_p < $total_pages): ?>
+                                        <?php if ($end_p < $total_pages - 1): ?><li class="page-item disabled"><span
+                                                    class="page-link">…</span></li><?php endif; ?>
+                                        <li class="page-item"><a class="page-link"
                                                 href="<?= event_page_url($total_pages, $search, $filter_cap, $filter_time) ?>"><?= $total_pages ?></a>
                                         </li>
                                     <?php endif; ?>
-                                    <!-- Next -->
                                     <li class="page-item <?= $cur_page >= $total_pages ? 'disabled' : '' ?>">
                                         <a class="page-link"
                                             href="<?= event_page_url($cur_page + 1, $search, $filter_cap, $filter_time) ?>">
@@ -567,22 +581,21 @@ layout('navbar');
                                 </ul>
                             </nav>
                             <p class="text-center text-muted small mt-2">
-                                Trang <?= $cur_page ?> / <?= $total_pages ?>
-                                &nbsp;·&nbsp; <?= $total_count ?> sự kiện
+                                Trang <?= $cur_page ?> / <?= $total_pages ?> &nbsp;·&nbsp; <?= $total_count ?> sự kiện
                             </p>
                         </div>
                     <?php endif; ?>
 
                 </div><!-- /col-lg-8 -->
 
-                <!-- ===== SIDEBAR ===== -->
+                <!-- Sidebar -->
                 <div class="col-lg-4">
 
-                    <!-- Quick Create Widget — chỉ hiện nếu có quyền -->
+                    <!-- Quick Create -->
                     <?php if ($can_create_event): ?>
-                        <div class="sidebar-widget newsletter-widget" data-aos="fade-up" data-aos-delay="500">
+                        <div class="sidebar-widget newsletter-widget" data-aos="fade-up" data-aos-delay="200">
                             <h4 class="widget-title">Tạo sự kiện mới</h4>
-                            <p>Nhập tên sự kiện để bắt đầu, hoặc bỏ trống để điền sau.</p>
+                            <p class="text-muted small mb-3">Nhập tên nhanh hoặc bấm nút để mở form đầy đủ.</p>
                             <div class="newsletter-form">
                                 <input type="text" id="quickEventName" placeholder="Tên sự kiện (tuỳ chọn)..."
                                     class="form-control mb-2">
@@ -593,41 +606,36 @@ layout('navbar');
                         </div>
                     <?php endif; ?>
 
-                    <!-- Search Widget -->
-                    <div class="sidebar-widget search-widget" data-aos="fade-up" data-aos-delay="200">
+                    <!-- Search -->
+                    <div class="sidebar-widget search-widget" data-aos="fade-up" data-aos-delay="300">
                         <h4 class="widget-title">Tìm kiếm sự kiện</h4>
                         <form action="<?= _HOST_URL ?>" method="get" class="search-form">
                             <input type="hidden" name="module" value="event">
                             <input type="hidden" name="action" value="index">
-                            <?php if ($filter_cap): ?>
-                                <input type="hidden" name="filter_cap" value="<?= $filter_cap ?>">
-                            <?php endif; ?>
-                            <?php if ($filter_time): ?>
-                                <input type="hidden" name="filter_time" value="<?= htmlspecialchars($filter_time) ?>">
-                            <?php endif; ?>
+                            <?php if ($filter_cap): ?><input type="hidden" name="filter_cap"
+                                    value="<?= $filter_cap ?>"><?php endif; ?>
+                            <?php if ($filter_time): ?><input type="hidden" name="filter_time"
+                                    value="<?= htmlspecialchars($filter_time) ?>"><?php endif; ?>
                             <input type="text" name="search" placeholder="Tìm kiếm sự kiện..." class="form-control"
                                 value="<?= htmlspecialchars($search) ?>">
-                            <button type="submit" class="search-btn">
-                                <i class="bi bi-search"></i>
-                            </button>
+                            <button type="submit" class="search-btn"><i class="bi bi-search"></i></button>
                         </form>
-                    </div><!-- /Search Widget -->
+                    </div>
 
-                    <!-- Filter Widget -->
-                    <div class="sidebar-widget filter-widget" data-aos="fade-up" data-aos-delay="300">
+                    <!-- Filter -->
+                    <div class="sidebar-widget filter-widget" data-aos="fade-up" data-aos-delay="400">
                         <h4 class="widget-title">Lọc sự kiện</h4>
                         <form action="<?= _HOST_URL ?>" method="get">
                             <input type="hidden" name="module" value="event">
                             <input type="hidden" name="action" value="index">
-                            <?php if (!empty($search)): ?>
-                                <input type="hidden" name="search" value="<?= htmlspecialchars($search) ?>">
-                            <?php endif; ?>
+                            <?php if (!empty($search)): ?><input type="hidden" name="search"
+                                    value="<?= htmlspecialchars($search) ?>"><?php endif; ?>
                             <div class="filter-content">
                                 <div class="filter-group">
-                                    <label class="filter-label">Khoa / Cấp tổ chức</label>
+                                    <label class="filter-label">Đơn vị tổ chức</label>
                                     <select class="form-select" name="filter_cap">
-                                        <option value="">Tất cả cấp</option>
-                                        <?php foreach ($caps as $cap): ?>
+                                        <option value="">Tất cả</option>
+                                        <?php foreach ($all_caps as $cap): ?>
                                             <option value="<?= (int)$cap['idCap'] ?>"
                                                 <?= ($filter_cap == (int)$cap['idCap']) ? 'selected' : '' ?>>
                                                 <?= htmlspecialchars($cap['tenCap']) ?>
@@ -650,34 +658,29 @@ layout('navbar');
                                     </select>
                                 </div>
                                 <div class="d-flex gap-2 mt-3">
-                                    <button type="submit" class="btn btn-primary filter-apply-btn flex-fill">
-                                        Áp dụng
-                                    </button>
+                                    <button type="submit" class="btn btn-primary filter-apply-btn flex-fill">Áp
+                                        dụng</button>
                                     <a href="<?= _HOST_URL ?>/?module=event&action=index"
                                         class="btn btn-outline-secondary flex-fill">Xóa lọc</a>
                                 </div>
                             </div>
                         </form>
-                    </div><!-- /Filter Widget -->
+                    </div>
 
-                    <!-- Upcoming Events Widget -->
-                    <div class="sidebar-widget upcoming-widget" data-aos="fade-up" data-aos-delay="400">
+                    <!-- Upcoming -->
+                    <div class="sidebar-widget upcoming-widget" data-aos="fade-up" data-aos-delay="500">
                         <h4 class="widget-title">Sự kiện sắp diễn ra</h4>
                         <div class="upcoming-list">
                             <?php if (empty($upcoming_events)): ?>
-                                <p class="text-muted" style="font-size:.9rem;">
-                                    Không có sự kiện sắp diễn ra.
-                                </p>
+                                <p class="text-muted" style="font-size:.9rem;">Không có sự kiện sắp diễn ra.</p>
                             <?php endif; ?>
                             <?php foreach ($upcoming_events as $ue): ?>
                                 <div class="upcoming-item">
                                     <div class="upcoming-date">
-                                        <span class="day">
-                                            <?= $ue['ngayBatDau'] ? date('d', strtotime($ue['ngayBatDau'])) : '--' ?>
-                                        </span>
-                                        <span class="month">
-                                            <?= $ue['ngayBatDau'] ? date('M', strtotime($ue['ngayBatDau'])) : '--' ?>
-                                        </span>
+                                        <span
+                                            class="day"><?= $ue['ngayBatDau'] ? date('d', strtotime($ue['ngayBatDau'])) : '--' ?></span>
+                                        <span
+                                            class="month"><?= $ue['ngayBatDau'] ? date('M', strtotime($ue['ngayBatDau'])) : '--' ?></span>
                                     </div>
                                     <div class="upcoming-content">
                                         <h5 class="upcoming-title">
@@ -698,99 +701,173 @@ layout('navbar');
                                 </div>
                             <?php endforeach; ?>
                         </div>
-                    </div><!-- /Upcoming Events Widget -->
+                    </div>
 
-                </div><!-- /col-lg-4 sidebar -->
-
-            </div><!-- /row -->
+                </div><!-- /sidebar -->
+            </div>
         </div>
     </section>
-
 </main>
 
-<script>
-    document.addEventListener('DOMContentLoaded', function() {
+<?php if ($can_create_event): ?>
+    <script>
+        (function() {
+            'use strict';
 
-        // ===== Quick Create: điền tên vào modal rồi mở =====
-        const btnOpen = document.getElementById('btnOpenCreateModal');
-        if (btnOpen) {
-            btnOpen.addEventListener('click', function() {
-                const quickInput = document.getElementById('quickEventName');
-                const tenSKField = document.getElementById('tenSK');
-                // Điền tên nếu có, bỏ trống vẫn mở được
-                if (tenSKField && quickInput) {
-                    tenSKField.value = quickInput.value.trim();
-                }
-                new bootstrap.Modal(document.getElementById('createEventModal')).show();
-            });
-        }
+            const capsByLoai = <?= json_encode($caps_by_loai, JSON_UNESCAPED_UNICODE) ?>;
+            const HOST_URL = <?= json_encode(_HOST_URL) ?>;
 
-        // ===== Client-side validation ngày =====
-        const form = document.getElementById('createEventForm');
-        if (form) {
-            form.addEventListener('submit', function(e) {
-                let valid = true;
+            const modal = document.getElementById('createEventModal');
+            const form = document.getElementById('createEventForm');
+            const tenSKInput = document.getElementById('tenSK');
+            const loaiCapSel = document.getElementById('idLoaiCap');
+            const capSel = document.getElementById('idCap');
+            const nameWarning = document.getElementById('nameWarning');
+            const nameWarnText = document.getElementById('nameWarningText');
+            const templateSel = document.getElementById('templateSelect');
+            const quickInput = document.getElementById('quickEventName');
+            const btnOpen = document.getElementById('btnOpenCreateModal');
 
-                const mo = document.getElementById('ngayMoDangKy');
-                const dong = document.getElementById('ngayDongDangKy');
-                const bat = document.getElementById('ngayBatDau');
-                const ket = document.getElementById('ngayKetThuc');
-                const errMo = document.getElementById('err-ngayMoDangKy');
-                const errBat = document.getElementById('err-ngayBatDau');
-
-                [mo, dong, bat, ket].forEach(el => el.classList.remove('is-invalid'));
-
-                // Kiểm tra thứ tự ngày mở/đóng đăng ký
-                if (mo.value && dong.value && new Date(mo.value) >= new Date(dong.value)) {
-                    mo.classList.add('is-invalid');
-                    dong.classList.add('is-invalid');
-                    errMo.textContent = 'Ngày mở đăng ký phải trước ngày đóng đăng ký.';
-                    valid = false;
-                }
-
-                // Kiểm tra thứ tự ngày bắt đầu/kết thúc
-                if (bat.value && ket.value && new Date(bat.value) >= new Date(ket.value)) {
-                    bat.classList.add('is-invalid');
-                    ket.classList.add('is-invalid');
-                    errBat.textContent = 'Ngày bắt đầu phải trước ngày kết thúc.';
-                    valid = false;
-                }
-
-                if (!valid) {
-                    e.preventDefault();
-                    const firstErr = form.querySelector('.is-invalid');
-                    if (firstErr) firstErr.scrollIntoView({
-                        behavior: 'smooth',
-                        block: 'center'
-                    });
-                }
-            });
-
-            // Xóa trạng thái lỗi khi người dùng thay đổi
-            ['ngayMoDangKy', 'ngayDongDangKy', 'ngayBatDau', 'ngayKetThuc'].forEach(function(id) {
-                const el = document.getElementById(id);
-                if (el) el.addEventListener('change', function() {
-                    this.classList.remove('is-invalid');
+            // ── 1. Cascade Cấp → Đơn vị ──────────────────────────────
+            function updateCapOptions(idLoaiCap, selectedIdCap) {
+                const opts = capsByLoai[idLoaiCap] || [];
+                capSel.innerHTML = opts.length ?
+                    '<option value="">-- Chọn đơn vị --</option>' :
+                    '<option value="">-- Không có đơn vị --</option>';
+                opts.forEach(function(c) {
+                    const opt = document.createElement('option');
+                    opt.value = c.idCap;
+                    opt.textContent = c.tenCap;
+                    if (selectedIdCap && parseInt(selectedIdCap) === parseInt(c.idCap)) opt.selected = true;
+                    capSel.appendChild(opt);
                 });
+                capSel.disabled = opts.length === 0;
+            }
+
+            loaiCapSel.addEventListener('change', function() {
+                updateCapOptions(this.value, null);
+                checkDuplicateName();
             });
-        }
 
-        // ===== Toast tự ẩn sau 4 giây =====
-        const toastEl = document.getElementById('successToast');
-        if (toastEl) {
-            setTimeout(function() {
-                const toast = bootstrap.Toast.getInstance(toastEl);
-                if (toast) toast.hide();
-                else toastEl.style.display = 'none';
-            }, 4000);
-        }
+            // Khôi phục khi form POST bị lỗi và reload lại
+            <?php if (!empty($_POST['idLoaiCap'])): ?>
+                updateCapOptions(<?= (int)$_POST['idLoaiCap'] ?>, <?= (int)($_POST['idCap'] ?? 0) ?>);
+            <?php endif; ?>
 
-        // ===== Nếu PHP trả lỗi → mở lại modal =====
-        <?php if (!empty($event_error)): ?>
-            new bootstrap.Modal(document.getElementById('createEventModal')).show();
-        <?php endif; ?>
+            // ── 2. AJAX kiểm tra trùng tên ───────────────────────────
+            let nameCheckTimer = null;
 
-    });
-</script>
+            function checkDuplicateName() {
+                const ten = tenSKInput ? tenSKInput.value.trim() : '';
+                const loaiCap = loaiCapSel ? loaiCapSel.value : '';
+                if (nameWarning) nameWarning.classList.add('d-none');
+                if (ten.length < 2) return;
+                clearTimeout(nameCheckTimer);
+                nameCheckTimer = setTimeout(async function() {
+                    try {
+                        const url = HOST_URL + '/?module=event&action=check_name_ajax' +
+                            '&tenSK=' + encodeURIComponent(ten) +
+                            (loaiCap ? '&idLoaiCap=' + encodeURIComponent(loaiCap) : '');
+                        const res = await fetch(url);
+                        const data = await res.json();
+                        if (data.exists && nameWarning && nameWarnText) {
+                            const scope = loaiCap ? 'trong cùng cấp tổ chức này' : 'trong hệ thống';
+                            nameWarnText.innerHTML = `Đã có <strong>${data.count}</strong> sự kiện tên này ` +
+                                scope + `. Bạn vẫn có thể tiếp tục tạo.`;
+                            nameWarning.classList.remove('d-none');
+                        }
+                    } catch (e) {
+                        /* bỏ qua lỗi mạng */
+                    }
+                }, 500);
+            }
+
+            if (tenSKInput) {
+                tenSKInput.addEventListener('blur', checkDuplicateName);
+                tenSKInput.addEventListener('input', function() {
+                    if (nameWarning) nameWarning.classList.add('d-none');
+                });
+            }
+
+            // ── 3. Template — pre-fill ────────────────────────────────
+            if (templateSel) {
+                templateSel.addEventListener('change', function() {
+                    const opt = this.options[this.selectedIndex];
+                    if (!opt || !opt.value) return;
+                    // Chỉ điền nếu đang trống (tránh ghi đè dữ liệu đã nhập)
+                    if (tenSKInput && tenSKInput.value.trim() === '')
+                        tenSKInput.value = opt.dataset.ten || '';
+                    const moTaEl = document.getElementById('moTa');
+                    if (moTaEl && moTaEl.value.trim() === '')
+                        moTaEl.value = opt.dataset.mota || '';
+                    const idLoaiCap = opt.dataset.idloaicap;
+                    const idCap = opt.dataset.idcap;
+                    if (idLoaiCap && loaiCapSel) {
+                        loaiCapSel.value = idLoaiCap;
+                        updateCapOptions(idLoaiCap, idCap);
+                    }
+                    checkDuplicateName();
+                });
+            }
+
+            // ── 4. Quick Create Widget ────────────────────────────────
+            if (btnOpen) {
+                btnOpen.addEventListener('click', function() {
+                    // Chỉ điền nếu field đang trống
+                    if (tenSKInput && quickInput && tenSKInput.value.trim() === '')
+                        tenSKInput.value = quickInput.value.trim();
+                    new bootstrap.Modal(modal).show();
+                });
+            }
+
+            // ── 5. Validation ngày phía client ───────────────────────
+            if (form) {
+                form.addEventListener('submit', function(e) {
+                    let valid = true;
+                    const mo = document.getElementById('ngayMoDangKy');
+                    const dong = document.getElementById('ngayDongDangKy');
+                    const bat = document.getElementById('ngayBatDau');
+                    const ket = document.getElementById('ngayKetThuc');
+                    const errMo = document.getElementById('err-ngayMoDangKy');
+                    const errBat = document.getElementById('err-ngayBatDau');
+
+                    [mo, dong, bat, ket].forEach(el => el && el.classList.remove('is-invalid'));
+
+                    if (mo.value && dong.value && new Date(mo.value) >= new Date(dong.value)) {
+                        mo.classList.add('is-invalid');
+                        dong.classList.add('is-invalid');
+                        if (errMo) errMo.textContent = 'Ngày mở đăng ký phải trước ngày đóng đăng ký.';
+                        valid = false;
+                    }
+                    if (bat.value && ket.value && new Date(bat.value) >= new Date(ket.value)) {
+                        bat.classList.add('is-invalid');
+                        ket.classList.add('is-invalid');
+                        if (errBat) errBat.textContent = 'Ngày bắt đầu phải trước ngày kết thúc.';
+                        valid = false;
+                    }
+                    if (!valid) {
+                        e.preventDefault();
+                        form.querySelector('.is-invalid')?.scrollIntoView({
+                            behavior: 'smooth',
+                            block: 'center'
+                        });
+                    }
+                });
+
+                ['ngayMoDangKy', 'ngayDongDangKy', 'ngayBatDau', 'ngayKetThuc'].forEach(function(id) {
+                    document.getElementById(id)?.addEventListener('change', function() {
+                        this.classList.remove('is-invalid');
+                    });
+                });
+            }
+
+            // ── 6. Reopen modal nếu PHP trả lỗi ──────────────────────
+            <?php if (!empty($event_error)): ?>
+                if (modal) new bootstrap.Modal(modal).show();
+            <?php endif; ?>
+
+        })();
+    </script>
+<?php endif; ?>
 
 <?php layout('footer'); ?>
