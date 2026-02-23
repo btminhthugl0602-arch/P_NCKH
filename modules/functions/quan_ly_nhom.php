@@ -21,53 +21,40 @@ function kiem_tra_sv_co_nhom($conn, $id_tk, $id_sk) {
  * 1. SINH VIÊN TẠO NHÓM MỚI
  * truyền vào $id_nhom_truong để check quyền (Chỉ SV mới được tạo nhóm), $id_sk để liên kết với sự kiện, tên nhóm, mô tả và số lượng thành viên tối đa
  */
-function tao_nhom_moi($conn, $id_nhom_truong, $id_sk, $ten_nhom, $mo_ta, $so_luong_max = 5) {
-    $su_kien = truy_van_mot_ban_ghi($conn, 'sukien', 'idSK', $id_sk);
-    if (!$su_kien || $su_kien['isActive'] == 0) return ['status' => false, 'message' => 'Sự kiện không khả dụng'];
-    
-    $now = time();
-    if ($now < strtotime($su_kien['ngayMoDangKy'])) return ['status' => false, 'message' => 'Cổng đăng ký chưa mở'];
-    if ($now > strtotime($su_kien['ngayDongDangKy'])) return ['status' => false, 'message' => 'Đã hết hạn đăng ký'];
-
-    $user = truy_van_mot_ban_ghi($conn, 'taikhoan', 'idTK', $id_nhom_truong);
-    if ($user['idLoaiTK'] != 3) {
-        return ['status' => false, 'message' => 'Chỉ sinh viên mới được quyền tạo nhóm dự thi'];
+function tao_nhom_moi($conn, $idTK, $idSK, $tenNhom, $moTa, $soLuongToiDa) {
+    // 1. Kiểm tra xem người dùng đã là thành viên của một nhóm nào trong sự kiện này chưa
+    $check_exist = mysqli_query($conn, "
+        SELECT 1 FROM thanhviennhom tv 
+        JOIN nhom n ON tv.idnhom = n.idnhom 
+        WHERE tv.idtk = $idTK AND n.idSK = $idSK AND tv.trangthai = 1
+    ");
+    if (mysqli_num_rows($check_exist) > 0) {
+        return ['status' => false, 'message' => 'Bạn đã tham gia một nhóm trong sự kiện này rồi.'];
     }
 
-    if (kiem_tra_sv_co_nhom($conn, $id_nhom_truong, $id_sk)) {
-        return ['status' => false, 'message' => 'Bạn đã tham gia một nhóm khác trong cuộc thi này'];
-    }
-
-    if (empty(trim($ten_nhom))) return ['status' => false, 'message' => 'Tên nhóm không được để trống'];
+    // 2. Tạo mã nhóm ngẫu nhiên (Ví dụ: GRP_SK1_TIMESTAMP)
+    $maNhom = 'GRP_' . $idSK . '_' . time();
 
     mysqli_begin_transaction($conn);
     try {
-        $ma_nhom = 'GRP_' . time() . rand(10, 99);
+        // 3. Insert vào bảng nhom
+        $sqlNhom = "INSERT INTO nhom (idSK, idnhomtruong, manhom, ngaytao, isActive) VALUES ($idSK, $idTK, '$maNhom', NOW(), 1)";
+        if (!mysqli_query($conn, $sqlNhom)) throw new Exception('Lỗi tạo nhóm (bảng nhom).');
+        
+        $idNhomMoi = mysqli_insert_id($conn);
 
-        // Tạo Nhóm
-        $res_nhom = _insert_info($conn, 'nhom', 
-            ['idSK', 'idnhomtruong', 'manhom', 'ngaytao', 'isActive'],
-            [$id_sk, $id_nhom_truong, $ma_nhom, date('Y-m-d H:i:s'), 1]
-        );
-        if (!$res_nhom) throw new Exception('Lỗi tạo nhóm');
-        $id_nhom = mysqli_insert_id($conn);
+        // 4. Insert vào bảng thongtinnhom
+        $tenNhomSafe = mysqli_real_escape_string($conn, $tenNhom);
+        $moTaSafe = mysqli_real_escape_string($conn, $moTa);
+        $sqlThongTin = "INSERT INTO thongtinnhom (idnhom, tennhom, mota, soluongtoida, dangtuyen) VALUES ($idNhomMoi, '$tenNhomSafe', '$moTaSafe', $soLuongToiDa, 1)";
+        if (!mysqli_query($conn, $sqlThongTin)) throw new Exception('Lỗi lưu thông tin nhóm.');
 
-        // Tạo Thông tin nhóm
-        $res_info = _insert_info($conn, 'thongtinnhom',
-            ['idnhom', 'tennhom', 'mota', 'soluongtoida', 'dangtuyen'],
-            [$id_nhom, $ten_nhom, $mo_ta, $so_luong_max, 1]
-        );
-        if (!$res_info) throw new Exception('Lỗi tạo thông tin nhóm');
-
-        // Thêm Trưởng nhóm (Vai trò 1)
-        $res_mem = _insert_info($conn, 'thanhviennhom',
-            ['idnhom', 'idtk', 'idvaitronhom', 'trangthai', 'ngaythamgia'],
-            [$id_nhom, $id_nhom_truong, 1, 1, date('Y-m-d H:i:s')]
-        );
-        if (!$res_mem) throw new Exception('Lỗi thêm trưởng nhóm');
+        // 5. Insert người tạo vào bảng thanhviennhom với vai trò là Trưởng nhóm (idvaitronhom = 1), trạng thái = 1 (đã duyệt)
+        $sqlThanhVien = "INSERT INTO thanhviennhom (idnhom, idtk, idvaitronhom, trangthai, ngaythamgia) VALUES ($idNhomMoi, $idTK, 1, 1, NOW())";
+        if (!mysqli_query($conn, $sqlThanhVien)) throw new Exception('Lỗi thêm thành viên trưởng nhóm.');
 
         mysqli_commit($conn);
-        return ['status' => true, 'message' => 'Tạo nhóm thành công', 'idNhom' => $id_nhom];
+        return ['status' => true, 'message' => 'Tạo nhóm thành công', 'idnhom' => $idNhomMoi];
 
     } catch (Exception $e) {
         mysqli_rollback($conn);

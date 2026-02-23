@@ -5,16 +5,20 @@ if (!defined('_AUTHEN')) {
 global $conn;
 
 require_once _PATH_URL . '/modules/functions/quan_ly_nhom.php';
+require_once _PATH_URL . '/modules/functions/base.php';
 
 $idNhom = isset($_GET['id']) ? (int)$_GET['id'] : 0;
-if ($idNhom <= 0) { require_once _PATH_URL . '/modules/errors/404.php'; exit; }
+if ($idNhom <= 0) {
+    require_once _PATH_URL . '/modules/errors/404.php';
+    exit;
+}
 
 $userId = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 0;
 
-// Lấy thông tin nhóm
+// ================== LẤY THÔNG TIN NHÓM + SỰ KIỆN ==================
 $resNhom = mysqli_query($conn, "
     SELECT n.idnhom, n.idSK, n.idnhomtruong, t.tennhom, t.mota, t.soluongtoida, t.dangtuyen,
-           sk.tenSK, sk.moTa AS moTaSK, sk.ngayBatDau, sk.ngayKetThuc,
+           sk.tenSK, sk.moTa AS moTaSK, sk.ngayBatDau, sk.ngayKetThuc, sk.ngayMoDangKy, sk.ngayDongDangKy,
            COALESCE(sv_t.tenSV, gv_t.tenGV, tk_t.tenTK, '') AS tenNhomTruong
     FROM nhom n
     LEFT JOIN thongtinnhom t ON n.idnhom = t.idnhom
@@ -25,118 +29,276 @@ $resNhom = mysqli_query($conn, "
     WHERE n.idnhom = $idNhom AND n.isActive = 1
     LIMIT 1
 ");
-if (!$resNhom || mysqli_num_rows($resNhom) == 0) { require_once _PATH_URL . '/modules/errors/404.php'; exit; }
+if (!$resNhom || mysqli_num_rows($resNhom) == 0) {
+    require_once _PATH_URL . '/modules/errors/404.php';
+    exit;
+}
 $nhom = mysqli_fetch_assoc($resNhom);
-$idSK = $nhom['idSK'];
+$idSK = (int)$nhom['idSK'];
 
-// Kiểm tra quyền
-$isMember = false; $isTruong = false;
+// ================== LẤY LOẠI TÀI KHOẢN ==================
+$userLoaiTK = 0;
 if ($userId > 0) {
-    $resMember = mysqli_query($conn, "SELECT idvaitronhom FROM thanhviennhom WHERE idnhom=$idNhom AND idtk=$userId AND trangthai=1 LIMIT 1");
+    $u = truy_van_mot_ban_ghi($conn, 'TAIKHOAN', 'idTK', $userId);
+    $userLoaiTK = $u ? (int)$u['idLoaiTK'] : 0;
+}
+$isSinhVien = ($userId > 0 && $userLoaiTK === 3);
+
+// ================== XÁC ĐỊNH THÀNH VIÊN / TRƯỞNG NHÓM ==================
+$isMember = false;
+$isTruong = false;
+$memberRoleId = 0;
+
+if ($userId > 0) {
+    $resMember = mysqli_query(
+        $conn,
+        "SELECT idvaitronhom 
+         FROM thanhviennhom 
+         WHERE idnhom=$idNhom AND idtk=$userId AND trangthai=1 
+         LIMIT 1"
+    );
     if ($resMember && mysqli_num_rows($resMember) > 0) {
         $isMember = true;
         $memberRow = mysqli_fetch_assoc($resMember);
-        $isTruong = ($memberRow['idvaitronhom'] == 1);
+        $memberRoleId = (int)$memberRow['idvaitronhom'];
+        if ($memberRoleId === 1) $isTruong = true;
+    }
+}
+
+// Đồng bộ theo cột nhom.idnhomtruong
+if ($userId > 0 && (int)$nhom['idnhomtruong'] === $userId) {
+    $isMember = true;
+    $isTruong = true;
+}
+
+// ================== HELPER: kiểm tra nhóm đã full chưa ==================
+function nhom_da_full(mysqli $conn, int $idNhom, int $soLuongToiDa): bool
+{
+    if ($soLuongToiDa <= 0) return false;
+    $res = mysqli_query(
+        $conn,
+        "SELECT COUNT(DISTINCT idtk) AS c 
+         FROM thanhviennhom 
+         WHERE idnhom=$idNhom AND trangthai=1 AND idvaitronhom != 3"
+    );
+    $c = ($res && ($row = mysqli_fetch_assoc($res))) ? (int)$row['c'] : 0;
+    return $c >= $soLuongToiDa;
+}
+
+function require_truong_nhom(bool $isTruong)
+{
+    if (!$isTruong) {
+        $_SESSION['flash_msg']  = 'Bạn không có quyền thực hiện thao tác này (chỉ trưởng nhóm).';
+        $_SESSION['flash_type'] = 'warning';
+        header("Location: " . $_SERVER['REQUEST_URI']);
+        exit();
     }
 }
 
 // ================== XỬ LÝ DUYỆT YÊU CẦU ==================
-if (isset($_POST['duyet_yeucau']) && $isTruong) {
+if (isset($_POST['duyet_yeucau'])) {
+    require_truong_nhom($isTruong);
+
     $idYeuCau  = (int)($_POST['idYeuCau'] ?? 0);
     $trangThai = (int)($_POST['trangThai'] ?? 2);
-    duyet_yeu_cau_nhom($conn, $userId, $idYeuCau, $trangThai);
-    header("Location: " . $_SERVER['REQUEST_URI']); exit();
+
+    if ($trangThai === 1) {
+        $soLuongToiDa = (int)($nhom['soluongtoida'] ?? 0);
+        if (nhom_da_full($conn, $idNhom, $soLuongToiDa)) {
+            $_SESSION['flash_msg']  = 'Nhóm đã đủ thành viên, không thể duyệt thêm.';
+            $_SESSION['flash_type'] = 'warning';
+            header("Location: " . $_SERVER['REQUEST_URI']);
+            exit();
+        }
+    }
+
+    $result = duyet_yeu_cau_nhom($conn, $userId, $idYeuCau, $trangThai);
+    if (is_array($result) && isset($result['status']) && !$result['status']) {
+        $_SESSION['flash_msg']  = $result['message'] ?? 'Không xử lý được yêu cầu.';
+        $_SESSION['flash_type'] = 'danger';
+    } else {
+        $_SESSION['flash_msg']  = 'Đã xử lý yêu cầu.';
+        $_SESSION['flash_type'] = 'success';
+    }
+    header("Location: " . $_SERVER['REQUEST_URI']);
+    exit();
 }
 
 // ================== XỬ LÝ XÓA THÀNH VIÊN ==================
-if (isset($_POST['xoa_thanh_vien']) && $isTruong) {
+if (isset($_POST['xoa_thanh_vien'])) {
+    require_truong_nhom($isTruong);
+
     $idTKXoa = (int)($_POST['idTK'] ?? 0);
-    roi_nhom($conn, $userId, $idNhom, $idTKXoa);
-    header("Location: " . $_SERVER['REQUEST_URI']); exit();
+    if ($idTKXoa <= 0) {
+        $_SESSION['flash_msg']  = 'Thiếu thông tin thành viên.';
+        $_SESSION['flash_type'] = 'warning';
+        header("Location: " . $_SERVER['REQUEST_URI']);
+        exit();
+    }
+
+    if ($idTKXoa === $userId) {
+        $_SESSION['flash_msg']  = 'Bạn không thể tự xóa chính mình bằng chức năng này.';
+        $_SESSION['flash_type'] = 'warning';
+        header("Location: " . $_SERVER['REQUEST_URI']);
+        exit();
+    }
+
+    $result = roi_nhom($conn, $userId, $idNhom, $idTKXoa);
+    if (is_array($result) && isset($result['status']) && !$result['status']) {
+        $_SESSION['flash_msg']  = $result['message'] ?? 'Không thể xóa thành viên.';
+        $_SESSION['flash_type'] = 'danger';
+    } else {
+        $_SESSION['flash_msg']  = 'Đã xóa thành viên khỏi nhóm.';
+        $_SESSION['flash_type'] = 'success';
+    }
+    header("Location: " . $_SERVER['REQUEST_URI']);
+    exit();
 }
 
 // ================== XỬ LÝ RỜI NHÓM ==================
-if (isset($_POST['roi_nhom']) && $isMember && !$isTruong) {
+if (isset($_POST['roi_nhom'])) {
+    if (!$isMember) {
+        $_SESSION['flash_msg']  = 'Bạn không phải thành viên nhóm.';
+        $_SESSION['flash_type'] = 'warning';
+        header("Location: " . $_SERVER['REQUEST_URI']);
+        exit();
+    }
+
+    if ($isTruong) {
+        $_SESSION['flash_msg']  = 'Trưởng nhóm không thể rời nhóm. Hãy nhượng quyền trước.';
+        $_SESSION['flash_type'] = 'warning';
+        header("Location: " . $_SERVER['REQUEST_URI']);
+        exit();
+    }
+
     $result = roi_nhom($conn, $userId, $idNhom, $userId);
-    if ($result['status']) {
+    if (is_array($result) && isset($result['status']) && $result['status']) {
         $_SESSION['flash_msg']  = 'Bạn đã rời nhóm thành công.';
         $_SESSION['flash_type'] = 'success';
-        header("Location: " . _HOST_URL . "?module=event&action=view&id=" . $idSK); exit();
+        header("Location: " . _HOST_URL . "?module=event&action=view&id=" . $idSK);
+        exit();
     } else {
-        $_SESSION['flash_msg']  = $result['message'];
+        $_SESSION['flash_msg']  = (is_array($result) ? ($result['message'] ?? '') : '') ?: 'Không thể rời nhóm.';
         $_SESSION['flash_type'] = 'danger';
-        header("Location: " . $_SERVER['REQUEST_URI']); exit();
+        header("Location: " . $_SERVER['REQUEST_URI']);
+        exit();
     }
 }
 
 // ================== XỬ LÝ NHƯỢNG QUYỀN TRƯỞNG NHÓM ==================
-if (isset($_POST['nhuong_quyen']) && $isTruong) {
+if (isset($_POST['nhuong_quyen'])) {
+    require_truong_nhom($isTruong);
+
     $idTKMoi = (int)($_POST['idTKMoi'] ?? 0);
-    if ($idTKMoi > 0 && $idTKMoi !== $userId) {
-        // Kiểm tra người được nhượng quyền phải là thành viên nhóm
-        $checkTV = mysqli_query($conn, "SELECT idvaitronhom FROM thanhviennhom WHERE idnhom=$idNhom AND idtk=$idTKMoi AND trangthai=1 LIMIT 1");
-        if ($checkTV && mysqli_num_rows($checkTV) > 0) {
-            $tvRow = mysqli_fetch_assoc($checkTV);
-            if ($tvRow['idvaitronhom'] != 3) { // không nhượng cho GVHD
-                mysqli_query($conn, "UPDATE thanhviennhom SET idvaitronhom=2 WHERE idnhom=$idNhom AND idtk=$userId AND trangthai=1");
-                mysqli_query($conn, "UPDATE thanhviennhom SET idvaitronhom=1 WHERE idnhom=$idNhom AND idtk=$idTKMoi AND trangthai=1");
-                mysqli_query($conn, "UPDATE nhom SET idnhomtruong=$idTKMoi WHERE idnhom=$idNhom");
-                $_SESSION['flash_msg']  = 'Đã nhượng quyền trưởng nhóm thành công.';
-                $_SESSION['flash_type'] = 'success';
-            } else {
-                $_SESSION['flash_msg']  = 'Không thể nhượng quyền cho Giảng viên hướng dẫn.';
-                $_SESSION['flash_type'] = 'warning';
-            }
-        } else {
-            $_SESSION['flash_msg']  = 'Người được chọn không phải thành viên nhóm.';
-            $_SESSION['flash_type'] = 'danger';
-        }
+    if ($idTKMoi <= 0 || $idTKMoi === $userId) {
+        $_SESSION['flash_msg']  = 'Người nhận quyền không hợp lệ.';
+        $_SESSION['flash_type'] = 'warning';
+        header("Location: " . $_SERVER['REQUEST_URI']);
+        exit();
     }
-    header("Location: " . $_SERVER['REQUEST_URI']); exit();
+
+    $checkTV = mysqli_query(
+        $conn,
+        "SELECT idvaitronhom 
+         FROM thanhviennhom 
+         WHERE idnhom=$idNhom AND idtk=$idTKMoi AND trangthai=1 
+         LIMIT 1"
+    );
+    if (!$checkTV || mysqli_num_rows($checkTV) == 0) {
+        $_SESSION['flash_msg']  = 'Người được chọn không phải thành viên nhóm.';
+        $_SESSION['flash_type'] = 'danger';
+        header("Location: " . $_SERVER['REQUEST_URI']);
+        exit();
+    }
+
+    $tvRow = mysqli_fetch_assoc($checkTV);
+    if ((int)$tvRow['idvaitronhom'] === 3) {
+        $_SESSION['flash_msg']  = 'Không thể nhượng quyền cho Giảng viên hướng dẫn.';
+        $_SESSION['flash_type'] = 'warning';
+        header("Location: " . $_SERVER['REQUEST_URI']);
+        exit();
+    }
+
+    mysqli_query($conn, "UPDATE thanhviennhom SET idvaitronhom=2 WHERE idnhom=$idNhom AND idtk=$userId AND trangthai=1");
+    mysqli_query($conn, "UPDATE thanhviennhom SET idvaitronhom=1 WHERE idnhom=$idNhom AND idtk=$idTKMoi AND trangthai=1");
+    mysqli_query($conn, "UPDATE nhom SET idnhomtruong=$idTKMoi WHERE idnhom=$idNhom");
+
+    $_SESSION['flash_msg']  = 'Đã nhượng quyền trưởng nhóm thành công.';
+    $_SESSION['flash_type'] = 'success';
+    header("Location: " . $_SERVER['REQUEST_URI']);
+    exit();
 }
 
 // ================== XỬ LÝ CẬP NHẬT NHÓM ==================
-if (isset($_POST['cap_nhat_nhom']) && $isTruong) {
+if (isset($_POST['cap_nhat_nhom'])) {
+    require_truong_nhom($isTruong);
+
     $tenNhomMoi  = mysqli_real_escape_string($conn, trim($_POST['tennhom'] ?? ''));
     $motaMoi     = mysqli_real_escape_string($conn, trim($_POST['mota'] ?? ''));
     $dangTuyen   = isset($_POST['dangtuyen']) ? 1 : 0;
-    if (!empty($tenNhomMoi)) {
-        mysqli_query($conn, "UPDATE thongtinnhom SET tennhom='$tenNhomMoi', mota='$motaMoi', dangtuyen=$dangTuyen WHERE idnhom=$idNhom");
-        $_SESSION['flash_msg']  = 'Đã cập nhật thông tin nhóm thành công.';
-        $_SESSION['flash_type'] = 'success';
+
+    if ($tenNhomMoi === '') {
+        $_SESSION['flash_msg']  = 'Tên nhóm không được để trống.';
+        $_SESSION['flash_type'] = 'warning';
+        header("Location: " . $_SERVER['REQUEST_URI']);
+        exit();
     }
-    header("Location: " . $_SERVER['REQUEST_URI']); exit();
+
+    mysqli_query($conn, "UPDATE thongtinnhom SET tennhom='$tenNhomMoi', mota='$motaMoi', dangtuyen=$dangTuyen WHERE idnhom=$idNhom");
+
+    $_SESSION['flash_msg']  = 'Đã cập nhật thông tin nhóm thành công.';
+    $_SESSION['flash_type'] = 'success';
+    header("Location: " . $_SERVER['REQUEST_URI']);
+    exit();
 }
 
-// ================== AJAX ==================
+// ================== AJAX: MỜI THÀNH VIÊN / GVHD ==================
 if (isset($_POST['ajax_action']) && $userId > 0) {
     header('Content-Type: application/json; charset=utf-8');
     $ajax_action = $_POST['ajax_action'];
 
-    if ($ajax_action === 'moi_thanh_vien' && $isTruong) {
-        $idSV   = (int)($_POST['idSV'] ?? 0);
-        $loiNhan = trim($_POST['loiNhan'] ?? '');
-        $result = gui_yeu_cau_nhom($conn, $idNhom, $idSV, 0, $loiNhan);
-    } elseif ($ajax_action === 'moi_gvhd' && $isTruong) {
-        $idGV   = (int)($_POST['idGV'] ?? 0);
-        $loiNhan = trim($_POST['loiNhan'] ?? '');
-        $result = gui_yeu_cau_nhom($conn, $idNhom, $idGV, 0, $loiNhan);
-    } else {
-        $result = ['status' => false, 'message' => 'Không có quyền thực hiện'];
+    if (!$isTruong) {
+        echo json_encode(['status' => false, 'message' => 'Không có quyền thực hiện'], JSON_UNESCAPED_UNICODE);
+        exit();
     }
-    echo json_encode($result, JSON_UNESCAPED_UNICODE);
+
+    if ($ajax_action === 'moi_thanh_vien') {
+        $idTKMoi = (int)($_POST['idSV'] ?? 0);
+        $loiNhan = trim($_POST['loiNhan'] ?? '');
+        $result = gui_yeu_cau_nhom($conn, $idNhom, $idTKMoi, 0, $loiNhan);
+        echo json_encode($result, JSON_UNESCAPED_UNICODE);
+        exit();
+    }
+
+    if ($ajax_action === 'moi_gvhd') {
+        $idTKMoi = (int)($_POST['idGV'] ?? 0);
+        $loiNhan = trim($_POST['loiNhan'] ?? '');
+        $result = gui_yeu_cau_nhom($conn, $idNhom, $idTKMoi, 0, $loiNhan);
+        echo json_encode($result, JSON_UNESCAPED_UNICODE);
+        exit();
+    }
+
+    echo json_encode(['status' => false, 'message' => 'Hành động không hợp lệ'], JSON_UNESCAPED_UNICODE);
     exit();
 }
 
 // ================== XỬ LÝ NỘP BÀI ==================
-if (isset($_POST['nop_bai']) && $isMember) {
-    $tenDeTai  = mysqli_real_escape_string($conn, trim($_POST['tenDeTai'] ?? ''));
+if (isset($_POST['nop_bai'])) {
+    if (!$isMember) {
+        $_SESSION['flash_msg']  = 'Bạn không phải thành viên nhóm nên không thể nộp bài.';
+        $_SESSION['flash_type'] = 'warning';
+        header("Location: " . $_SERVER['REQUEST_URI']);
+        exit();
+    }
+
+    $tenDeTai   = mysqli_real_escape_string($conn, trim($_POST['tenDeTai'] ?? ''));
     $idChuDeRaw = (int)($_POST['idChuDe'] ?? 0);
-    $idChuDe = $idChuDeRaw > 0 ? $idChuDeRaw : 'NULL';
+    $chuDeSQL   = $idChuDeRaw > 0 ? $idChuDeRaw : 'NULL';
 
     $uploadDir = _PATH_URL . '/uploads/sanpham/';
     if (!is_dir($uploadDir)) mkdir($uploadDir, 0755, true);
-    $allowed = ['pdf','doc','docx','zip','rar','pptx'];
+
+    $allowed = ['pdf', 'doc', 'docx', 'zip', 'rar', 'pptx'];
     $uploaded = [];
 
     if (!empty($_FILES['files']['name'][0])) {
@@ -144,40 +306,58 @@ if (isset($_POST['nop_bai']) && $isMember) {
         $docIndex = 1;
         for ($i = 0; $i < $fileCount; $i++) {
             if ($_FILES['files']['error'][$i] !== UPLOAD_ERR_OK) continue;
+
             $ext = strtolower(pathinfo($_FILES['files']['name'][$i], PATHINFO_EXTENSION));
             if (!in_array($ext, $allowed)) continue;
             if ($_FILES['files']['size'][$i] > 20 * 1024 * 1024) continue;
-            if (in_array($ext, ['zip','rar'])) { $idLoai = 3; }
-            else { $idLoai = $docIndex <= 1 ? 1 : 2; $docIndex++; }
+
+            if (in_array($ext, ['zip', 'rar'])) {
+                $idLoai = 3;
+            } else {
+                $idLoai = $docIndex <= 1 ? 1 : 2;
+                $docIndex++;
+            }
+
             $originalName = pathinfo($_FILES['files']['name'][$i], PATHINFO_FILENAME);
             $safeOriginal = preg_replace('/[^a-zA-Z0-9_\-\.\x{0080}-\x{FFFF}]/u', '_', $originalName);
-            $newName = $safeOriginal . '_' . time() . '.' . $ext;
-            if (move_uploaded_file($_FILES['files']['tmp_name'][$i], $uploadDir.$newName)) {
-                $uploaded[$idLoai] = mysqli_real_escape_string($conn, 'uploads/sanpham/'.$newName);
+            // Fix: Added index $i to prevent file overwrite when uploading multiple files simultaneously
+            $newName = $safeOriginal . '_' . time() . '_' . $i . '.' . $ext;
+
+            if (move_uploaded_file($_FILES['files']['tmp_name'][$i], $uploadDir . $newName)) {
+                $uploaded[$idLoai] = mysqli_real_escape_string($conn, 'uploads/sanpham/' . $newName);
             }
         }
     }
 
-    if (!empty($tenDeTai)) {
-        $chuDeSQL = $idChuDeRaw > 0 ? $idChuDeRaw : 'NULL';
+    if ($tenDeTai !== '') {
         mysqli_query($conn, "UPDATE sanpham SET tensanpham='$tenDeTai', idChuDeSK=$chuDeSQL WHERE idNhom=$idNhom AND idSK=$idSK");
+
         foreach ($uploaded as $idLoai => $filePath) {
             $check = mysqli_query($conn, "SELECT idSanPham FROM sanpham WHERE idNhom=$idNhom AND idSK=$idSK AND idloaitailieu=$idLoai LIMIT 1");
-            if (mysqli_num_rows($check) > 0) {
+            if ($check && mysqli_num_rows($check) > 0) {
                 $row = mysqli_fetch_assoc($check);
-                mysqli_query($conn, "UPDATE sanpham SET moTataiLieu='$filePath' WHERE idSanPham={$row['idSanPham']}");
+                mysqli_query($conn, "UPDATE sanpham SET moTataiLieu='$filePath' WHERE idSanPham=" . (int)$row['idSanPham']);
             } else {
-                mysqli_query($conn, "INSERT INTO sanpham (idNhom,idSK,idChuDeSK,idloaitailieu,moTataiLieu,TrangThai,isActive,tensanpham) VALUES ($idNhom,$idSK,$chuDeSQL,$idLoai,'$filePath','Chờ duyệt',1,'$tenDeTai')");
+                mysqli_query(
+                    $conn,
+                    "INSERT INTO sanpham (idNhom,idSK,idChuDeSK,idloaitailieu,moTataiLieu,TrangThai,isActive,tensanpham)
+                     VALUES ($idNhom,$idSK,$chuDeSQL,$idLoai,'$filePath','Chờ duyệt',1,'$tenDeTai')"
+                );
             }
         }
+
         $_SESSION['flash_msg']  = 'nop_bai_thanh_cong';
         $_SESSION['flash_type'] = 'success';
+    } else {
+        $_SESSION['flash_msg']  = 'Tên đề tài không được để trống.';
+        $_SESSION['flash_type'] = 'warning';
     }
-    header("Location: " . $_SERVER['REQUEST_URI']); exit();
+
+    header("Location: " . $_SERVER['REQUEST_URI']);
+    exit();
 }
 
-// ================== LẤY DỮ LIỆU ==================
-// Thành viên
+// ================== LẤY DỮ LIỆU HIỂN THỊ ==================
 $resTV = mysqli_query($conn, "
     SELECT tv.idtk, tv.idvaitronhom,
            COALESCE(sv.tenSV, gv2.tenGV, tk.tenTK) AS tenTV,
@@ -191,9 +371,8 @@ $resTV = mysqli_query($conn, "
     ORDER BY tv.idvaitronhom ASC
 ");
 $danhSachTV = $resTV ? mysqli_fetch_all($resTV, MYSQLI_ASSOC) : [];
-$soThanhVien = count(array_filter($danhSachTV, fn($tv) => $tv['idvaitronhom'] != 3));
+$soThanhVien = count(array_filter($danhSachTV, fn($tv) => (int)$tv['idvaitronhom'] != 3));
 
-// GVHD
 $resGVHD = mysqli_query($conn, "
     SELECT COALESCE(gv2.tenGV, tk.tenTK) AS tenGVHD, tv.idtk
     FROM thanhviennhom tv
@@ -204,7 +383,6 @@ $resGVHD = mysqli_query($conn, "
 ");
 $gvhd = ($resGVHD && mysqli_num_rows($resGVHD) > 0) ? mysqli_fetch_assoc($resGVHD) : null;
 
-// Yêu cầu chờ duyệt
 $resYC = mysqli_query($conn, "
     SELECT yc.idYeuCau, yc.ChieuMoi, yc.loiNhan, yc.ngayGui,
            COALESCE(sv.tenSV, gv2.tenGV, tk.tenTK) AS tenNguoiGui,
@@ -219,7 +397,6 @@ $resYC = mysqli_query($conn, "
 $yeuCauCho = $resYC ? mysqli_fetch_all($resYC, MYSQLI_ASSOC) : [];
 $soYC = count($yeuCauCho);
 
-// Pending GVHD
 $resPGV = mysqli_query($conn, "
     SELECT yc.idYeuCau FROM yeucau_thamgia yc
     JOIN taikhoan tk ON yc.idTK = tk.idTK
@@ -228,24 +405,22 @@ $resPGV = mysqli_query($conn, "
 ");
 $pendingGVHD = ($resPGV && mysqli_num_rows($resPGV) > 0);
 
-// Danh sách SV (để mời)
 $resSV = mysqli_query($conn, "SELECT sv.idTK, sv.tenSV, sv.MSV, l.tenLop FROM sinhvien sv JOIN taikhoan tk ON sv.idTK=tk.idTK LEFT JOIN lop l ON sv.idLop=l.idLop WHERE tk.isActive=1 ORDER BY sv.tenSV");
 $sv_list = $resSV ? mysqli_fetch_all($resSV, MYSQLI_ASSOC) : [];
 $dsMaTK = array_column($danhSachTV, 'idtk');
 
-// Danh sách GV
 $resGV = mysqli_query($conn, "SELECT gv.idTK, gv.tenGV, k.tenKhoa FROM giangvien gv JOIN taikhoan tk ON gv.idTK=tk.idTK LEFT JOIN khoa k ON gv.idKhoa=k.idKhoa WHERE tk.isActive=1 ORDER BY gv.tenGV");
 $gv_list = $resGV ? mysqli_fetch_all($resGV, MYSQLI_ASSOC) : [];
 
-// Chủ đề sự kiện
 $resCD = mysqli_query($conn, "SELECT cs.idChuDeSK, c.tenChuDe FROM chude_sukien cs JOIN chude c ON cs.idchude=c.idChuDe WHERE cs.idSK=$idSK AND cs.isActive=1");
 $chude_list = $resCD ? mysqli_fetch_all($resCD, MYSQLI_ASSOC) : [];
 
-// Bài nộp
 $resSP = mysqli_query($conn, "SELECT sp.*, l.loaitailieu AS tenLoaiTL FROM sanpham sp LEFT JOIN loaitailieu l ON sp.idloaitailieu=l.idtailieu WHERE sp.idNhom=$idNhom AND sp.idSK=$idSK ORDER BY sp.idloaitailieu ASC");
 $spRows = $resSP ? mysqli_fetch_all($resSP, MYSQLI_ASSOC) : [];
 $sanPhamTheoLoai = [];
-foreach ($spRows as $row) { $sanPhamTheoLoai[$row['idloaitailieu']] = $row; }
+foreach ($spRows as $row) {
+    $sanPhamTheoLoai[$row['idloaitailieu']] = $row;
+}
 $sanPham = !empty($spRows) ? $spRows[0] : null;
 
 $flashMsg  = $_SESSION['flash_msg']  ?? '';
@@ -300,7 +475,7 @@ layout('navbar');
 /* ===== SUCCESS POPUP ===== */
 @keyframes popIn { from { transform:scale(.7); opacity:0; } to { transform:scale(1); opacity:1; } }
 
-/* ===== GROUP HERO (inherits course-hero styles) ===== */
+/* ===== GROUP HERO ===== */
 .group-stats-row { display:flex; gap:16px; flex-wrap:wrap; margin-top:12px; }
 .group-stat { display:flex; align-items:center; gap:6px; font-size:14px; color:#555; }
 .group-stat i { color:#4f46e5; }
@@ -334,7 +509,6 @@ layout('navbar');
             <div class="row">
                 <div class="col-lg-8">
 
-                    <!-- Hero section -->
                     <div class="course-hero" data-aos="fade-up" data-aos-delay="200">
                         <div class="hero-content">
                             <div class="course-badge">
@@ -344,7 +518,6 @@ layout('navbar');
                             <h1><?= htmlspecialchars($nhom['tennhom'] ?? '') ?></h1>
                             <p class="course-subtitle"><?= nl2br(htmlspecialchars($nhom['mota'] ?? 'Chưa có mô tả.')) ?></p>
 
-                            <!-- Sự kiện như "instructor card" -->
                             <div class="instructor-card">
                                 <img src="<?= _HOST_URL_TEMPLATES ?>/assets/img/education/courses-8.webp" alt="Event" class="instructor-image" style="object-fit:cover;">
                                 <div class="instructor-details">
@@ -360,7 +533,6 @@ layout('navbar');
                                 </div>
                             </div>
 
-                            <!-- Stats -->
                             <div class="group-stats-row">
                                 <div class="group-stat"><i class="bi bi-people-fill"></i> <?= $soThanhVien ?>/<?= $nhom['soluongtoida'] ?> thành viên</div>
                                 <?php if ($sanPham): ?>
@@ -373,7 +545,6 @@ layout('navbar');
                         </div>
                     </div>
 
-                    <!-- Nav tabs -->
                     <div class="course-nav-tabs" data-aos="fade-up" data-aos-delay="300">
                         <ul class="nav nav-tabs" id="GroupDetailTabs" role="tablist">
                             <?php if ($isTruong): ?>
@@ -407,7 +578,6 @@ layout('navbar');
 
                         <div class="tab-content" id="GroupDetailContent">
 
-                            <!-- ===== TAB QUẢN LÝ (chỉ trưởng nhóm) ===== -->
                             <?php if ($isTruong): ?>
                             <div class="tab-pane fade show active" id="tab-quanly" role="tabpanel">
                                 <div class="pt-3">
@@ -431,7 +601,6 @@ layout('navbar');
                                     </ul>
 
                                     <div class="tab-content">
-                                        <!-- Sub-tab: Thành viên -->
                                         <div class="tab-pane fade show active" id="subtab-tv">
                                             <p class="text-muted small mb-3">Danh sách thành viên đang hoạt động trong nhóm.</p>
                                             <?php if (empty($danhSachTV)): ?>
@@ -464,7 +633,6 @@ layout('navbar');
                                             <?php endif; ?>
                                         </div>
 
-                                        <!-- Sub-tab: Yêu cầu tham gia -->
                                         <div class="tab-pane fade" id="subtab-yeucau">
                                             <?php if (empty($yeuCauCho)): ?>
                                                 <div class="text-center py-4 text-muted">
@@ -506,7 +674,6 @@ layout('navbar');
                                             <?php endif; ?>
                                         </div>
 
-                                        <!-- Sub-tab: Cài đặt nhóm -->
                                         <div class="tab-pane fade" id="subtab-caidat">
                                             <form method="POST" class="pt-2">
                                                 <input type="hidden" name="cap_nhat_nhom" value="1">
@@ -529,7 +696,6 @@ layout('navbar');
                                 </div>
                             </div>
 
-                            <!-- ===== TAB THÀNH VIÊN (cho thành viên thường) ===== -->
                             <?php else: ?>
                             <div class="tab-pane fade show active" id="tab-thanhvien" role="tabpanel">
                                 <div class="pt-3">
@@ -551,7 +717,6 @@ layout('navbar');
                             </div>
                             <?php endif; ?>
 
-                            <!-- ===== TAB MỜI THAM GIA (chỉ trưởng nhóm) ===== -->
                             <?php if ($isTruong): ?>
                             <div class="tab-pane fade" id="tab-moi" role="tabpanel">
                                 <div class="pt-3">
@@ -569,7 +734,6 @@ layout('navbar');
                                     </ul>
 
                                     <div class="tab-content">
-                                        <!-- Sub-tab: Mời SV -->
                                         <div class="tab-pane fade show active" id="subtab-moiSV">
                                             <div class="info-alert-box mt-2">
                                                 <i class="bi bi-info-circle-fill"></i>
@@ -601,7 +765,6 @@ layout('navbar');
                                             </div>
                                         </div>
 
-                                        <!-- Sub-tab: Mời GVHD -->
                                         <div class="tab-pane fade" id="subtab-moiGV">
                                             <?php if ($gvhd): ?>
                                                 <div class="alert alert-success mt-2">
@@ -647,7 +810,6 @@ layout('navbar');
                             </div>
                             <?php endif; ?>
 
-                            <!-- ===== TAB NỘP BÀI ===== -->
                             <?php if ($isMember): ?>
                             <div class="tab-pane fade <?= !$isTruong ? 'show active' : '' ?>" id="tab-nopbai" role="tabpanel">
                                 <div class="pt-3">
@@ -666,7 +828,6 @@ layout('navbar');
                                     </ul>
 
                                     <div class="tab-content">
-                                        <!-- Sub-tab: Form nộp bài -->
                                         <div class="tab-pane fade show active" id="subtab-nopbai">
                                             <form method="POST" enctype="multipart/form-data" class="pt-2">
                                                 <input type="hidden" name="nop_bai" value="1">
@@ -705,7 +866,6 @@ layout('navbar');
                                                     <i class="bi bi-paperclip me-1"></i>Tệp bài nộp
                                                 </label>
 
-                                                <!-- Files đã nộp -->
                                                 <?php if (!empty($sanPhamTheoLoai)):
                                                     $loaiLabel=[1=>['icon'=>'file-earmark-text','label'=>'Báo cáo tóm tắt','color'=>'primary'],
                                                                 2=>['icon'=>'file-earmark-richtext','label'=>'Báo cáo toàn văn','color'=>'info'],
@@ -733,7 +893,6 @@ layout('navbar');
                                                     </div>
                                                 <?php endif; ?>
 
-                                                <!-- Dropzone -->
                                                 <div id="dropzone-main"
                                                     class="upload-dropzone"
                                                     onclick="document.getElementById('fileInput-main').click()">
@@ -762,7 +921,6 @@ layout('navbar');
                                             </form>
                                         </div>
 
-                                        <!-- Sub-tab: Tất cả bài nộp -->
                                         <div class="tab-pane fade" id="subtab-tatcabainop">
                                             <?php if (empty($sanPhamTheoLoai)): ?>
                                                 <div class="text-center py-5 text-muted">
@@ -813,9 +971,8 @@ layout('navbar');
                         </div>
                     </div>
 
-                </div><!-- col-lg-8 -->
+                </div>
 
-                <!-- Sidebar -->
                 <div class="col-lg-4">
                     <div class="course-details-card" data-aos="fade-up" data-aos-delay="300">
                         <h4>Thông tin nhóm</h4>
@@ -869,7 +1026,6 @@ layout('navbar');
                         </div>
                     </div>
 
-                    <!-- Danh sách thành viên sidebar -->
                     <div class="course-details-card mt-4" data-aos="fade-up" data-aos-delay="400">
                         <h4>Thành viên nhóm</h4>
                         <?php foreach ($danhSachTV as $tv):
@@ -885,36 +1041,26 @@ layout('navbar');
                         <?php endforeach; ?>
                     </div>
 
-                    <!-- Hành động của thành viên -->
                     <?php if ($isMember): ?>
                     <div class="course-details-card mt-4" data-aos="fade-up" data-aos-delay="500">
                         <h4>Hành động</h4>
                         <div class="d-flex flex-column gap-2">
-
                             <?php if ($isTruong): ?>
-                            <!-- Nút Nhượng quyền (chỉ trưởng nhóm) -->
-                            <?php
-                            $svTrongNhom = array_filter($danhSachTV, fn($tv) => $tv['idvaitronhom'] == 2);
-                            ?>
+                            <?php $svTrongNhom = array_filter($danhSachTV, fn($tv) => $tv['idvaitronhom'] == 2); ?>
                             <?php if (!empty($svTrongNhom)): ?>
-                            <button type="button" class="btn btn-outline-warning w-100"
-                                data-bs-toggle="modal" data-bs-target="#nhuongQuyenModal">
+                            <button type="button" class="btn btn-outline-warning w-100" data-bs-toggle="modal" data-bs-target="#nhuongQuyenModal">
                                 <i class="bi bi-arrow-left-right me-2"></i>Nhượng quyền trưởng nhóm
                             </button>
                             <?php else: ?>
-                            <button type="button" class="btn btn-outline-secondary w-100" disabled
-                                title="Cần có thành viên khác để nhượng quyền">
+                            <button type="button" class="btn btn-outline-secondary w-100" disabled title="Cần có thành viên khác để nhượng quyền">
                                 <i class="bi bi-arrow-left-right me-2"></i>Nhượng quyền trưởng nhóm
                             </button>
                             <?php endif; ?>
                             <?php else: ?>
-                            <!-- Nút Rời nhóm (thành viên thường) -->
-                            <button type="button" class="btn btn-outline-danger w-100"
-                                data-bs-toggle="modal" data-bs-target="#roiNhomModal">
+                            <button type="button" class="btn btn-outline-danger w-100" data-bs-toggle="modal" data-bs-target="#roiNhomModal">
                                 <i class="bi bi-box-arrow-left me-2"></i>Rời nhóm
                             </button>
                             <?php endif; ?>
-
                         </div>
                     </div>
                     <?php endif; ?>
@@ -927,7 +1073,6 @@ layout('navbar');
 
 <?php layout('footer'); ?>
 
-<!-- MODAL RỜI NHÓM -->
 <?php if ($isMember && !$isTruong): ?>
 <div class="modal fade" id="roiNhomModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
@@ -959,7 +1104,6 @@ layout('navbar');
 </div>
 <?php endif; ?>
 
-<!-- MODAL NHƯỢNG QUYỀN -->
 <?php if ($isTruong): ?>
 <?php $svTrongNhom = array_filter($danhSachTV, fn($tv) => $tv['idvaitronhom'] == 2); ?>
 <?php if (!empty($svTrongNhom)): ?>
@@ -1009,7 +1153,6 @@ layout('navbar');
 <script>
 const AJAX_URL = window.location.href;
 
-// ---- Tìm kiếm SV inline ----
 document.getElementById('sv-search-inline')?.addEventListener('input', function() {
     const q = this.value.toLowerCase();
     const sel = document.getElementById('sv-select-inline');
@@ -1019,9 +1162,6 @@ document.getElementById('sv-search-inline')?.addEventListener('input', function(
     });
 });
 
-// ================================================================
-// AJAX: MỜI SINH VIÊN (inline)
-// ================================================================
 function submitMoiSVInline() {
     const select   = document.getElementById('sv-select-inline');
     const loinhan  = document.getElementById('sv-loinhan-inline');
@@ -1080,9 +1220,6 @@ function resetMoiSV() {
     btn.innerHTML = '<i class="bi bi-send me-1"></i>Gửi lời mời';
 }
 
-// ================================================================
-// AJAX: MỜI GVHD (inline)
-// ================================================================
 function submitMoiGVInline() {
     const select   = document.getElementById('gv-select-inline');
     const loinhan  = document.getElementById('gv-loinhan-inline');
@@ -1135,12 +1272,9 @@ function showInlineResult(el, success, html) {
 }
 
 function escHtml(str) {
-    return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
 }
 
-// ================================================================
-// UPLOAD FILES
-// ================================================================
 let fileStore = [];
 
 function handleFileSelect(input) {
@@ -1195,7 +1329,6 @@ function syncToInput() {
     } catch(e) {}
 }
 
-// Drag & drop
 const dropzone = document.getElementById('dropzone-main');
 if (dropzone) {
     dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('dragover'); });
@@ -1210,9 +1343,6 @@ if (dropzone) {
     });
 }
 
-// ================================================================
-// POPUP NỘP BÀI THÀNH CÔNG
-// ================================================================
 <?php if (($flashMsg ?? '') === 'nop_bai_thanh_cong'): ?>
 document.addEventListener('DOMContentLoaded', () => { showSubmitSuccessPopup(); });
 <?php endif; ?>

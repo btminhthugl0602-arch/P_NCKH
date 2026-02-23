@@ -1,5 +1,4 @@
 <?php
-
 if (!defined('_AUTHEN')) {
     die('Truy cập không hợp lệ');
 }
@@ -15,13 +14,13 @@ $user_id   = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id']       : 0;
 $event_created = false;
 $event_error   = '';
 
-// Đọc flash message từ session (kết quả PRG redirect)
+// Đọc flash message từ session
 if (getSessionFlash('event_created')) {
     $event_created = true;
 }
 
-// Dùng hàm có sẵn trong base.php
-$can_create_event = kiem_tra_quyen_he_thong($conn, $user_id, 'event.manage');
+// Kiểm tra đúng quyền 'tao_su_kien'
+$can_create_event = ($user_id > 0) ? kiem_tra_quyen_he_thong($conn, $user_id, 'tao_su_kien') : false;
 
 // =============================================
 // XỬ LÝ TẠO SỰ KIỆN — chỉ khi có quyền

@@ -222,13 +222,38 @@ function truy_van_mot_ban_ghi($conn, $bang, $cot_khoa, $gia_tri_khoa)
     return !empty($data) ? $data[0] : null;
 }
 
-function anh_xa_ma_quyen($conn, $ma_quyen)
+/**
+ * Ánh xạ mã quyền -> idQuyen
+ * CSDL mới dùng maQuyen_code để code backend kiểm tra.
+ * (Nếu cần tương thích cũ, vẫn fallback maQuyen)
+ */
+function anh_xa_ma_quyen($conn, $ma_quyen_code)
 {
-    $quyen = truy_van_mot_ban_ghi($conn, 'QUYEN', 'maQuyen', $ma_quyen);
-    return $quyen ? $quyen['idQuyen'] : null;
+    $safe = mysqli_real_escape_string($conn, trim((string)$ma_quyen_code));
+    if ($safe === '') return null;
+
+    // Ưu tiên maQuyen_code
+    $res = mysqli_query($conn, "SELECT idQuyen FROM quyen WHERE maQuyen_code='$safe' LIMIT 1");
+    if ($res && mysqli_num_rows($res) > 0) {
+        $r = mysqli_fetch_assoc($res);
+        return (int)$r['idQuyen'];
+    }
+
+    // Fallback: maQuyen (để không phá phần cũ nếu còn dùng)
+    $res2 = mysqli_query($conn, "SELECT idQuyen FROM quyen WHERE maQuyen='$safe' LIMIT 1");
+    if ($res2 && mysqli_num_rows($res2) > 0) {
+        $r2 = mysqli_fetch_assoc($res2);
+        return (int)$r2['idQuyen'];
+    }
+
+    return null;
 }
 
-function kiem_tra_quyen_he_thong($conn, $id_tai_khoan, $ma_quyen)
+/**
+ * Kiểm tra quyền HỆ THỐNG (HE_THONG) theo bảng taikhoan_quyen.
+ * Truyền vào maQuyen_code (vd: admin_events, admin_users)
+ */
+function kiem_tra_quyen_he_thong($conn, $id_tai_khoan, $ma_quyen_code)
 {
     // DEV MODE: bypass quyền
     if (defined('_BYPASS_AUTH') && _BYPASS_AUTH === true) {
@@ -238,20 +263,21 @@ function kiem_tra_quyen_he_thong($conn, $id_tai_khoan, $ma_quyen)
     $user = truy_van_mot_ban_ghi($conn, 'TAIKHOAN', 'idTK', $id_tai_khoan);
     if (!$user) return false;
 
-    if ($user['idLoaiTK'] == 1) return true;
+    // Admin hệ thống: full quyền
+    if ((int)$user['idLoaiTK'] === 1) return true;
 
-    $id_quyen = anh_xa_ma_quyen($conn, $ma_quyen);
+    $id_quyen = anh_xa_ma_quyen($conn, $ma_quyen_code);
     if (!$id_quyen) return false;
 
     $conditions = [
         'WHERE' => [
             'idTK',
             '=',
-            $id_tai_khoan,
+            (int)$id_tai_khoan,
             'AND',
             'idQuyen',
             '=',
-            $id_quyen,
+            (int)$id_quyen,
             'AND',
             'isActive',
             '=',
@@ -262,7 +288,6 @@ function kiem_tra_quyen_he_thong($conn, $id_tai_khoan, $ma_quyen)
     ];
 
     $result = _select_info($conn, 'TAIKHOAN_QUYEN', ['thoiGianBatDau', 'thoiGianKetThuc'], $conditions);
-
     if (empty($result)) return false;
 
     $quyen_tk = $result[0];
@@ -270,10 +295,73 @@ function kiem_tra_quyen_he_thong($conn, $id_tai_khoan, $ma_quyen)
     $start = strtotime($quyen_tk['thoiGianBatDau']);
     $end = !empty($quyen_tk['thoiGianKetThuc']) ? strtotime($quyen_tk['thoiGianKetThuc']) : null;
 
-    if ($start <= $now && ($end === null || $end >= $now)) {
+    return ($start <= $now && ($end === null || $end >= $now));
+}
+
+/**
+ * Kiểm tra quyền THEO SỰ KIỆN (SU_KIEN) dựa trên CSDL mới.
+ * - Role của user trong sự kiện: taikhoan_vaitro_sukien (isActive=1)
+ * - Role metadata: vaitro_sukien (isActive=1)
+ *   + isSystem=1 => quyền lấy từ vaitro_quyen theo idVaiTroGoc
+ *   + isSystem=0 => quyền lấy từ vaitro_quyen_sk theo idVaiTroSK
+ * - Quyền match theo quyen.maQuyen_code (phamVi='SU_KIEN')
+ */
+function kiem_tra_quyen_su_kien($conn, int $idTK, int $idSK, string $maQuyenCode): bool
+{
+    // DEV MODE: bypass quyền
+    if (defined('_BYPASS_AUTH') && _BYPASS_AUTH === true) {
         return true;
     }
 
+    if ($idTK <= 0 || $idSK <= 0 || trim($maQuyenCode) === '') return false;
+
+    $idTK = (int)$idTK;
+    $idSK = (int)$idSK;
+    $code = mysqli_real_escape_string($conn, trim($maQuyenCode));
+
+    // Admin hệ thống: full quyền
+    $user = truy_van_mot_ban_ghi($conn, 'TAIKHOAN', 'idTK', $idTK);
+    if ($user && (int)$user['idLoaiTK'] === 1) return true;
+
+    $sql = "
+        SELECT 1
+        FROM taikhoan_vaitro_sukien tvs
+        JOIN vaitro_sukien vts 
+             ON vts.idVaiTroSK = tvs.idVaiTroSK 
+            AND vts.idSK = tvs.idSK
+            AND vts.isActive = 1
+        LEFT JOIN vaitro_quyen vq 
+               ON vts.isSystem = 1 
+              AND vts.idVaiTroGoc IS NOT NULL
+              AND vq.idVaiTro = vts.idVaiTroGoc
+        LEFT JOIN vaitro_quyen_sk vqsk
+               ON vts.isSystem = 0
+              AND vqsk.idVaiTroSK = vts.idVaiTroSK
+        JOIN quyen q 
+          ON q.idQuyen = COALESCE(vq.idQuyen, vqsk.idQuyen)
+        WHERE tvs.idTK = $idTK
+          AND tvs.idSK = $idSK
+          AND tvs.isActive = 1
+          AND q.phamVi = 'SU_KIEN'
+          AND q.maQuyen_code = '$code'
+        LIMIT 1
+    ";
+
+    $res = mysqli_query($conn, $sql);
+    return ($res && mysqli_num_rows($res) > 0);
+}
+
+/**
+ * Check user có ít nhất 1 quyền trong list (SU_KIEN)
+ */
+function kiem_tra_bat_ky_quyen_su_kien($conn, int $idTK, int $idSK, array $codes): bool
+{
+    foreach ($codes as $c) {
+        $c = trim((string)$c);
+        if ($c !== '' && kiem_tra_quyen_su_kien($conn, $idTK, $idSK, $c)) {
+            return true;
+        }
+    }
     return false;
 }
 
