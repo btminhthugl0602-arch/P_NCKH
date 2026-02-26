@@ -1,139 +1,223 @@
 <?php
+
+/**
+ * base.php — Thư viện hàm lõi của hệ thống
+ *
+ * THAY ĐỔI SO VỚI PHIÊN BẢN CŨ:
+ * ─────────────────────────────────────────────────────────────
+ * [FIX] _insert_info            : nối chuỗi + escape  →  Prepared Statement
+ * [FIX] _update_info            : nối chuỗi + escape  →  Prepared Statement
+ * [FIX] _delete_info            : nối chuỗi + escape  →  Prepared Statement
+ * [GIỮ] _select_info            : đã đúng, chỉnh sửa nhỏ cho nhất quán
+ * [FIX] anh_xa_ma_quyen         : escape + nối chuỗi  →  Prepared Statement
+ * [FIX] kiem_tra_quyen_su_kien  : escape + nối chuỗi  →  Prepared Statement
+ * [FIX] kiem_tra_co_nhom_active : nối chuỗi int       →  Prepared Statement
+ * [FIX] kiem_tra_duoc_cham_bai  : nối chuỗi int       →  Prepared Statement
+ *
+ * KHÔNG thay đổi:
+ * - Chữ ký tất cả hàm (tên + thứ tự tham số) → code gọi hiện tại KHÔNG cần sửa
+ * - Tên biến $conn → vẫn là mysqli connection
+ * - layout(), isGet(), isPost(), filter()
+ * - chuan_hoa_chuoi_sql() giữ lại (deprecated) để tránh crash code cũ
+ * ─────────────────────────────────────────────────────────────
+ */
+
 if (!defined('_AUTHEN')) {
     die('Truy cập không hợp lệ');
 }
+
+
+// ============================================================
+// PHẦN 1: HÀM CRUD LÕI
+// ============================================================
+
 /**
- * Hàm chèn dữ liệu
+ * [Internal] Trả về ký tự kiểu bind_param cho 1 giá trị
+ * i = int | d = float | s = string/null/bool
  */
-function _insert_info($conn, $table, $fields = [], $values = [])
+function _get_bind_type($value): string
 {
-    $field_list = implode(", ", $fields);
+    if (is_int($value))   return 'i';
+    if (is_float($value)) return 'd';
+    return 's';
+}
 
-    foreach ($values as $key => $value) {
-        if (is_string($value)) {
-            $values[$key] = "'" . mysqli_real_escape_string($conn, $value) . "'";
-        } elseif (is_null($value)) {
-            $values[$key] = "NULL";
-        }
-    }
+/**
+ * [Internal] Build chuỗi types cho bind_param từ array values
+ * VD: ['Nguyen', 1, 2.5] → "sis" ... thực ra "sid"
+ */
+function _build_types(array $values): string
+{
+    return implode('', array_map('_get_bind_type', $values));
+}
 
-    $values_list = implode(", ", $values);
-
-    $sql = "INSERT INTO $table ($field_list) VALUES ($values_list)";
-    if (!mysqli_query($conn, $sql)) {
-        error_log("SQL Error in _insert_info: " . mysqli_error($conn));
+/**
+ * INSERT một bản ghi
+ *
+ * Cách dùng (không đổi so với cũ):
+ *   _insert_info($conn, 'taikhoan', ['tenTK', 'matKhau', 'idLoaiTK'], ['admin', '123', 1]);
+ *
+ * @return bool
+ */
+function _insert_info($conn, string $table, array $fields = [], array $values = []): bool
+{
+    if (empty($fields) || empty($values)) {
+        error_log("_insert_info: fields hoặc values rỗng");
         return false;
     }
+    if (count($fields) !== count($values)) {
+        error_log("_insert_info: số fields và values không khớp [{$table}]");
+        return false;
+    }
+
+    $field_list   = implode(', ', $fields);
+    $placeholders = implode(', ', array_fill(0, count($values), '?'));
+    $sql          = "INSERT INTO {$table} ({$field_list}) VALUES ({$placeholders})";
+
+    $stmt = mysqli_prepare($conn, $sql);
+    if (!$stmt) {
+        error_log("_insert_info prepare thất bại [{$table}]: " . mysqli_error($conn));
+        return false;
+    }
+
+    $types = _build_types($values);
+    mysqli_stmt_bind_param($stmt, $types, ...$values);
+
+    if (!mysqli_stmt_execute($stmt)) {
+        error_log("_insert_info execute thất bại [{$table}]: " . mysqli_stmt_error($stmt));
+        mysqli_stmt_close($stmt);
+        return false;
+    }
+
+    mysqli_stmt_close($stmt);
     return true;
 }
 
 /**
- * Hàm cập nhật dữ liệu (Logic cũ - Nối chuỗi)
+ * UPDATE bản ghi theo điều kiện
+ *
+ * Cấu trúc $conditions (không đổi so với cũ):
+ *   ['tên_cột' => ['toán_tử', giá_trị, 'AND|OR|']]
+ *
+ * Ví dụ:
+ *   _update_info($conn, 'taikhoan',
+ *       ['isActive'], [0],
+ *       ['idTK' => ['=', 5, '']]
+ *   );
+ *
+ * @return bool
  */
-function _update_info($conn, $table, $fields = [], $values = [], $conditions = [])
+function _update_info($conn, string $table, array $fields = [], array $values = [], array $conditions = []): bool
 {
-    if (count($fields) != count($values)) {
-        error_log("Lỗi _update_info: Số lượng trường và giá trị không khớp!");
+    if (count($fields) !== count($values)) {
+        error_log("_update_info: số fields và values không khớp [{$table}]");
         return false;
     }
 
-    $clause = "";
-    $set_clause = "";
+    // SET clause
+    $set_parts = array_map(fn($f) => "{$f} = ?", $fields);
+    $set_sql   = implode(', ', $set_parts);
 
-    // Câu lệnh điều kiện
-    foreach ($conditions as $key => $condition) {
+    // WHERE clause
+    $where_parts  = [];
+    $where_values = [];
+
+    foreach ($conditions as $col => $condition) {
         $operator = $condition[0];
-        if (is_string($condition[1])) {
-            $condition_value = "'" . mysqli_real_escape_string($conn, $condition[1]) . "'";
-        } else {
-            $condition_value = $condition[1];
-        }
-        $logic = $condition[2] ?? '';
-        $clause .= "$key $operator $condition_value $logic ";
+        $val      = $condition[1];
+        $logic    = trim($condition[2] ?? '');
+
+        $part = "{$col} {$operator} ?";
+        if ($logic !== '') $part .= " {$logic}";
+
+        $where_parts[]  = $part;
+        $where_values[] = $val;
     }
 
-    // Câu lệnh SET
-    for ($i = 0; $i < count($fields); $i++) {
-        if (is_string($values[$i])) {
-            $values[$i] = "'" . mysqli_real_escape_string($conn, $values[$i]) . "'";
-        }
-        $set_clause .= $fields[$i] . " = " . $values[$i];
-        if ($i < count($fields) - 1) {
-            $set_clause .= ", ";
-        }
-    }
+    $where_sql = !empty($where_parts) ? 'WHERE ' . implode(' ', $where_parts) : '';
+    $sql       = "UPDATE {$table} SET {$set_sql} {$where_sql}";
 
-    if (!empty($clause)) {
-        $clause = "WHERE " . $clause;
-    }
-
-    $sql = "UPDATE $table SET $set_clause " . $clause;
-    if (!mysqli_query($conn, $sql)) {
-        error_log("SQL Error in _update_info: " . mysqli_error($conn));
+    $stmt = mysqli_prepare($conn, $sql);
+    if (!$stmt) {
+        error_log("_update_info prepare thất bại [{$table}]: " . mysqli_error($conn));
         return false;
     }
+
+    // Gộp params: SET values trước, WHERE values sau
+    $all_values = array_merge($values, $where_values);
+    $types      = _build_types($all_values);
+
+    mysqli_stmt_bind_param($stmt, $types, ...$all_values);
+
+    if (!mysqli_stmt_execute($stmt)) {
+        error_log("_update_info execute thất bại [{$table}]: " . mysqli_stmt_error($stmt));
+        mysqli_stmt_close($stmt);
+        return false;
+    }
+
+    mysqli_stmt_close($stmt);
     return true;
 }
 
 /**
- * Hàm lấy dữ liệu (Prepared Statements - Hỗ trợ ORDER BY, LIMIT)
+ * SELECT nhiều bản ghi
+ *
+ * Cấu trúc $conditions hỗ trợ: WHERE, ORDER BY, LIMIT
+ * (giữ nguyên hoàn toàn như phiên bản cũ)
+ *
+ * @return array|false
  */
-function _select_info($conn, $table, $fields = [], $conditions = [])
+function _select_info($conn, string $table, array $fields = [], array $conditions = [])
 {
-    $field_list = implode(", ", $fields);
-    if (empty($field_list)) $field_list = "*";
+    $field_list = !empty($fields) ? implode(', ', $fields) : '*';
 
-    $clause = "";
+    $clause = '';
     $params = [];
-    $types = "";
+    $types  = '';
 
     foreach ($conditions as $key => $condition) {
         $key_upper = strtoupper(trim($key));
-        $clause .= " $key_upper ";
+        $clause   .= " {$key_upper} ";
 
         $i = 0;
         while ($i < count($condition)) {
-            $col_name = $condition[$i] ?? '';
+            $col_name = $condition[$i]     ?? '';
             $operator = $condition[$i + 1] ?? '';
             $value    = $condition[$i + 2] ?? '';
             $logic    = $condition[$i + 3] ?? '';
 
-            // Bỏ qua nếu tên cột rỗng (trừ trường hợp LIMIT)
             if (($col_name === '' || $col_name === null) && $key_upper !== 'LIMIT') {
                 $i += 4;
                 continue;
             }
 
             if ($key_upper === 'ORDER BY') {
-                $clause .= "$col_name $operator $logic ";
+                $clause .= "{$col_name} {$operator} {$logic} ";
             } elseif ($key_upper === 'LIMIT') {
-                $clause .= "$col_name ";
+                $clause .= "{$col_name} ";
             } else {
-                $clause .= "$col_name $operator ? $logic ";
+                $clause  .= "{$col_name} {$operator} ? {$logic} ";
                 $params[] = $value;
-
-                if (is_int($value)) $types .= "i";
-                else if (is_float($value)) $types .= "d";
-                else $types .= "s";
+                $types   .= _get_bind_type($value);
             }
             $i += 4;
         }
     }
 
-    $sql = "SELECT $field_list FROM $table " . $clause;
-
+    $sql  = "SELECT {$field_list} FROM {$table} {$clause}";
     $stmt = mysqli_prepare($conn, $sql);
+
     if (!$stmt) {
-        error_log("Lỗi chuẩn bị SQL (_select_info): " . mysqli_error($conn));
+        error_log("_select_info prepare thất bại [{$table}]: " . mysqli_error($conn));
         return false;
     }
 
-    if (count($params) > 0) {
+    if (!empty($params)) {
         mysqli_stmt_bind_param($stmt, $types, ...$params);
     }
 
     if (!mysqli_stmt_execute($stmt)) {
-        error_log("Lỗi thực thi SQL (_select_info): " . mysqli_error($conn));
+        error_log("_select_info execute thất bại [{$table}]: " . mysqli_stmt_error($stmt));
         mysqli_stmt_close($stmt);
         return false;
     }
@@ -149,121 +233,166 @@ function _select_info($conn, $table, $fields = [], $conditions = [])
 
     return $data;
 }
-function _delete_info($conn, $table, $conditions = [])
+
+/**
+ * DELETE bản ghi theo điều kiện
+ *
+ * Bắt buộc phải có $conditions — không cho phép DELETE không điều kiện
+ *
+ * Ví dụ:
+ *   _delete_info($conn, 'taikhoan_quyen', [
+ *       'idTK'    => ['=', 5,  'AND'],
+ *       'idQuyen' => ['=', 12, ''],
+ *   ]);
+ *
+ * @return bool
+ */
+function _delete_info($conn, string $table, array $conditions = []): bool
 {
     if (empty($conditions)) {
-        error_log("Lỗi _delete_info: Điều kiện xóa rỗng!");
+        error_log("_delete_info: conditions rỗng — từ chối DELETE không điều kiện [{$table}]");
         return false;
     }
 
-    $clause = "";
-    foreach ($conditions as $key => $condition) {
+    $where_parts  = [];
+    $where_values = [];
+
+    foreach ($conditions as $col => $condition) {
         $operator = $condition[0];
-        if (is_string($condition[1])) {
-            $condition_value = "'" . mysqli_real_escape_string($conn, $condition[1]) . "'";
-        } else {
-            $condition_value = $condition[1];
-        }
-        $logic = $condition[2] ?? '';
-        $clause .= "$key $operator $condition_value $logic ";
+        $val      = $condition[1];
+        $logic    = trim($condition[2] ?? '');
+
+        $part = "{$col} {$operator} ?";
+        if ($logic !== '') $part .= " {$logic}";
+
+        $where_parts[]  = $part;
+        $where_values[] = $val;
     }
 
-    $sql = "DELETE FROM $table WHERE $clause";
-    if (!mysqli_query($conn, $sql)) {
-        error_log("SQL Error in _delete_info: " . mysqli_error($conn));
+    $sql  = "DELETE FROM {$table} WHERE " . implode(' ', $where_parts);
+    $stmt = mysqli_prepare($conn, $sql);
+
+    if (!$stmt) {
+        error_log("_delete_info prepare thất bại [{$table}]: " . mysqli_error($conn));
         return false;
     }
+
+    $types = _build_types($where_values);
+    mysqli_stmt_bind_param($stmt, $types, ...$where_values);
+
+    if (!mysqli_stmt_execute($stmt)) {
+        error_log("_delete_info execute thất bại [{$table}]: " . mysqli_stmt_error($stmt));
+        mysqli_stmt_close($stmt);
+        return false;
+    }
+
+    mysqli_stmt_close($stmt);
     return true;
 }
+
 /**
- * Hàm kiểm tra tồn tại (Sử dụng Prepared Statement)
+ * Kiểm tra tồn tại bản ghi theo 1 cột
+ *
+ * @return bool
  */
-function _is_exist($conn, $table, $field, $value)
+function _is_exist($conn, string $table, string $field, $value): bool
 {
-    $sql = "SELECT $field FROM $table WHERE $field = ?";
+    $sql  = "SELECT 1 FROM {$table} WHERE {$field} = ? LIMIT 1";
     $stmt = mysqli_prepare($conn, $sql);
     if (!$stmt) return false;
 
-    mysqli_stmt_bind_param($stmt, "s", $value);
+    $type = _get_bind_type($value);
+    mysqli_stmt_bind_param($stmt, $type, $value);
     mysqli_stmt_execute($stmt);
     mysqli_stmt_store_result($stmt);
-    $row_count = mysqli_stmt_num_rows($stmt);
+
+    $exists = mysqli_stmt_num_rows($stmt) > 0;
     mysqli_stmt_close($stmt);
-    return $row_count > 0;
+
+    return $exists;
 }
 
-// ==========================================
-// CÁC HÀM HELPER (Auth & Logic)
-// ==========================================
 
-function chuan_hoa_chuoi_sql($conn, $str)
-{
-    return mysqli_real_escape_string($conn, trim($str));
-}
+// ============================================================
+// PHẦN 2: HÀM HELPER TRUY VẤN
+// ============================================================
 
-function kiem_tra_ton_tai_ban_ghi($conn, $bang, $cot, $gia_tri)
+/**
+ * Kiểm tra tồn tại bản ghi — wrapper của _is_exist
+ */
+function kiem_tra_ton_tai_ban_ghi($conn, string $bang, string $cot, $gia_tri): bool
 {
     return _is_exist($conn, $bang, $cot, $gia_tri);
 }
 
-function truy_van_mot_ban_ghi($conn, $bang, $cot_khoa, $gia_tri_khoa)
+/**
+ * Lấy 1 bản ghi theo khoá
+ *
+ * @return array|null
+ */
+function truy_van_mot_ban_ghi($conn, string $bang, string $cot_khoa, $gia_tri_khoa): ?array
 {
     $conditions = [
-        'WHERE' => [
-            $cot_khoa,
-            '=',
-            $gia_tri_khoa,
-            ''
-        ],
-        'LIMIT' => [1, '', '', '']
+        'WHERE' => [$cot_khoa, '=', $gia_tri_khoa, ''],
+        'LIMIT' => [1, '', '', ''],
     ];
 
     $data = _select_info($conn, $bang, [], $conditions);
-    return !empty($data) ? $data[0] : null;
+    return (!empty($data) && is_array($data)) ? $data[0] : null;
 }
 
 /**
- * Ánh xạ mã quyền -> idQuyen
- * CSDL mới dùng maQuyen_code để code backend kiểm tra.
- * (Nếu cần tương thích cũ, vẫn fallback maQuyen)
+ * Ánh xạ maQuyen_code → idQuyen
+ *
+ * [FIX] Thay escape + nối chuỗi → Prepared Statement
+ *
+ * @return int|null
  */
-function anh_xa_ma_quyen($conn, $ma_quyen_code)
+function anh_xa_ma_quyen($conn, $ma_quyen_code): ?int
 {
-    $safe = mysqli_real_escape_string($conn, trim((string)$ma_quyen_code));
-    if ($safe === '') return null;
+    $code = trim((string)$ma_quyen_code);
+    if ($code === '') return null;
 
     // Ưu tiên maQuyen_code
-    $res = mysqli_query($conn, "SELECT idQuyen FROM quyen WHERE maQuyen_code='$safe' LIMIT 1");
-    if ($res && mysqli_num_rows($res) > 0) {
-        $r = mysqli_fetch_assoc($res);
-        return (int)$r['idQuyen'];
+    $stmt = mysqli_prepare($conn, "SELECT idQuyen FROM quyen WHERE maQuyen_code = ? LIMIT 1");
+    if ($stmt) {
+        mysqli_stmt_bind_param($stmt, 's', $code);
+        mysqli_stmt_execute($stmt);
+        $res = mysqli_stmt_get_result($stmt);
+        if ($res && $row = mysqli_fetch_assoc($res)) {
+            mysqli_stmt_close($stmt);
+            return (int)$row['idQuyen'];
+        }
+        mysqli_stmt_close($stmt);
     }
 
-    // Fallback: maQuyen (để không phá phần cũ nếu còn dùng)
-    $res2 = mysqli_query($conn, "SELECT idQuyen FROM quyen WHERE maQuyen='$safe' LIMIT 1");
-    if ($res2 && mysqli_num_rows($res2) > 0) {
-        $r2 = mysqli_fetch_assoc($res2);
-        return (int)$r2['idQuyen'];
+    // Fallback maQuyen (tương thích ngược)
+    $stmt2 = mysqli_prepare($conn, "SELECT idQuyen FROM quyen WHERE maQuyen = ? LIMIT 1");
+    if ($stmt2) {
+        mysqli_stmt_bind_param($stmt2, 's', $code);
+        mysqli_stmt_execute($stmt2);
+        $res2 = mysqli_stmt_get_result($stmt2);
+        if ($res2 && $row2 = mysqli_fetch_assoc($res2)) {
+            mysqli_stmt_close($stmt2);
+            return (int)$row2['idQuyen'];
+        }
+        mysqli_stmt_close($stmt2);
     }
 
     return null;
 }
 
 /**
- * Kiểm tra quyền HỆ THỐNG (HE_THONG) theo bảng taikhoan_quyen.
- * Truyền vào maQuyen_code (vd: admin_events, admin_users)
+ * Kiểm tra quyền HỆ THỐNG của tài khoản
  */
-function kiem_tra_quyen_he_thong($conn, $id_tai_khoan, $ma_quyen_code)
+function kiem_tra_quyen_he_thong($conn, $id_tai_khoan, string $ma_quyen_code): bool
 {
-    // DEV MODE: bypass quyền
-    if (defined('_BYPASS_AUTH') && _BYPASS_AUTH === true) {
-        return true;
-    }
+    if (defined('_BYPASS_AUTH') && _BYPASS_AUTH === true) return true;
 
-    $user = truy_van_mot_ban_ghi($conn, 'TAIKHOAN', 'idTK', $id_tai_khoan);
+    $user = truy_van_mot_ban_ghi($conn, 'taikhoan', 'idTK', (int)$id_tai_khoan);
     if (!$user) return false;
 
-    // Admin hệ thống: full quyền
+    // Admin hệ thống: full quyền không cần check bảng
     if ((int)$user['idLoaiTK'] === 1) return true;
 
     $id_quyen = anh_xa_ma_quyen($conn, $ma_quyen_code);
@@ -282,83 +411,96 @@ function kiem_tra_quyen_he_thong($conn, $id_tai_khoan, $ma_quyen_code)
             'isActive',
             '=',
             1,
-            ''
+            '',
         ],
-        'LIMIT' => [1, '', '', '']
+        'LIMIT' => [1, '', '', ''],
     ];
 
-    $result = _select_info($conn, 'TAIKHOAN_QUYEN', ['thoiGianBatDau', 'thoiGianKetThuc'], $conditions);
+    $result = _select_info($conn, 'taikhoan_quyen', ['thoiGianBatDau', 'thoiGianKetThuc'], $conditions);
     if (empty($result)) return false;
 
-    $quyen_tk = $result[0];
-    $now = time();
-    $start = strtotime($quyen_tk['thoiGianBatDau']);
-    $end = !empty($quyen_tk['thoiGianKetThuc']) ? strtotime($quyen_tk['thoiGianKetThuc']) : null;
+    $now   = time();
+    $start = strtotime($result[0]['thoiGianBatDau']);
+    $end   = !empty($result[0]['thoiGianKetThuc']) ? strtotime($result[0]['thoiGianKetThuc']) : null;
 
     return ($start <= $now && ($end === null || $end >= $now));
 }
 
 /**
- * Kiểm tra quyền THEO SỰ KIỆN — kiến trúc mới (Phần 2.4 tài liệu thiết kế).
- * taikhoan_vaitro_sukien.idVaiTro trỏ thẳng vào vaitro (bỏ vaitro_sukien).
- * Quyền lấy từ vaitro_quyen JOIN quyen — không còn COALESCE 2 nhánh isSystem.
+ * Kiểm tra quyền THEO SỰ KIỆN của tài khoản
+ *
+ * [FIX] escape + nối chuỗi → Prepared Statement
  */
 function kiem_tra_quyen_su_kien($conn, int $idTK, int $idSK, string $maQuyenCode): bool
 {
-    // DEV MODE: bypass quyền
-    if (defined('_BYPASS_AUTH') && _BYPASS_AUTH === true) {
-        return true;
-    }
-
+    if (defined('_BYPASS_AUTH') && _BYPASS_AUTH === true) return true;
     if ($idTK <= 0 || $idSK <= 0 || trim($maQuyenCode) === '') return false;
 
-    $idTK = (int)$idTK;
-    $idSK = (int)$idSK;
-    $code = mysqli_real_escape_string($conn, trim($maQuyenCode));
-
     // Admin hệ thống: full quyền
-    $user = truy_van_mot_ban_ghi($conn, 'TAIKHOAN', 'idTK', $idTK);
+    $user = truy_van_mot_ban_ghi($conn, 'taikhoan', 'idTK', $idTK);
     if ($user && (int)$user['idLoaiTK'] === 1) return true;
 
-    // Kiến trúc mới: 2 bảng JOIN, không còn vaitro_sukien / vaitro_quyen_sk
     $sql = "
         SELECT 1
         FROM taikhoan_vaitro_sukien tvs
         JOIN vaitro_quyen vq ON tvs.idVaiTro = vq.idVaiTro
         JOIN quyen q         ON vq.idQuyen   = q.idQuyen
-        WHERE tvs.idTK       = $idTK
-          AND tvs.idSK       = $idSK
+        WHERE tvs.idTK       = ?
+          AND tvs.idSK       = ?
           AND tvs.isActive   = 1
           AND q.phamVi       = 'SU_KIEN'
-          AND q.maQuyen_code = '$code'
+          AND q.maQuyen_code = ?
         LIMIT 1
     ";
 
-    $res = mysqli_query($conn, $sql);
-    return ($res && mysqli_num_rows($res) > 0);
+    $stmt = mysqli_prepare($conn, $sql);
+    if (!$stmt) return false;
+
+    mysqli_stmt_bind_param($stmt, 'iis', $idTK, $idSK, $maQuyenCode);
+    mysqli_stmt_execute($stmt);
+    mysqli_stmt_store_result($stmt);
+
+    $found = mysqli_stmt_num_rows($stmt) > 0;
+    mysqli_stmt_close($stmt);
+
+    return $found;
 }
 
 /**
- * Kiểm tra user đang có nhóm active trong sự kiện.
- * Dùng để gate quyền cần nhóm: nop_san_pham, xem_bai_cua_nhom (Phần A.1).
+ * Kiểm tra user có nhóm active trong sự kiện
+ *
+ * [FIX] nối chuỗi int → Prepared Statement
  */
 function kiem_tra_co_nhom_active($conn, int $idTK, int $idSK): bool
 {
-    $idTK = (int)$idTK;
-    $idSK = (int)$idSK;
-    $res = mysqli_query(
-        $conn,
-        "SELECT 1 FROM thanhviennhom tv
-         JOIN nhom n ON tv.idnhom = n.idnhom
-         WHERE tv.idtk = $idTK AND n.idSK = $idSK
-           AND tv.trangthai = 1 AND n.isActive = 1
-         LIMIT 1"
-    );
-    return ($res && mysqli_num_rows($res) > 0);
+    if ($idTK <= 0 || $idSK <= 0) return false;
+
+    $sql = "
+        SELECT 1
+        FROM thanhviennhom tv
+        JOIN nhom n ON tv.idnhom = n.idnhom
+        WHERE tv.idtk      = ?
+          AND n.idSK        = ?
+          AND tv.trangthai  = 1
+          AND n.isActive    = 1
+        LIMIT 1
+    ";
+
+    $stmt = mysqli_prepare($conn, $sql);
+    if (!$stmt) return false;
+
+    mysqli_stmt_bind_param($stmt, 'ii', $idTK, $idSK);
+    mysqli_stmt_execute($stmt);
+    mysqli_stmt_store_result($stmt);
+
+    $found = mysqli_stmt_num_rows($stmt) > 0;
+    mysqli_stmt_close($stmt);
+
+    return $found;
 }
 
 /**
- * Check user có ít nhất 1 quyền trong list (SU_KIEN)
+ * Kiểm tra user có ít nhất 1 quyền trong danh sách (SU_KIEN)
  */
 function kiem_tra_bat_ky_quyen_su_kien($conn, int $idTK, int $idSK, array $codes): bool
 {
@@ -372,82 +514,104 @@ function kiem_tra_bat_ky_quyen_su_kien($conn, int $idTK, int $idSK, array $codes
 }
 
 /**
- * Tầng 2 check quyền chấm điểm — Luồng 3 (PHANCONG_CHAM).
- * Kiểm tra GV có được phân công chấm bài $idSP trong vòng $idVong không.
- * Tầng này KHÔNG dùng taikhoan_vaitro_sukien vì role chỉ nói "GV được chấm trong SK",
- * không nói "GV được chấm bài nào cụ thể" — phải query trực tiếp phancong_doclap/tieuban_giangvien.
+ * Kiểm tra GV được phân công chấm bài trong vòng thi
  *
- * @param  mysqli $conn
- * @param  int    $idGV   ID giảng viên (từ bảng giangvien)
- * @param  int    $idSP   ID sản phẩm cần chấm
- * @param  int    $idVong ID vòng thi
- * @return bool
+ * [FIX] nối chuỗi int → Prepared Statement
  */
 function kiem_tra_duoc_cham_bai($conn, int $idGV, int $idSP, int $idVong): bool
 {
-    $idGV  = (int)$idGV;
-    $idSP  = (int)$idSP;
-    $idVong = (int)$idVong;
-
     if ($idGV <= 0 || $idSP <= 0 || $idVong <= 0) return false;
 
+    // UNION: kiểm tra cả 2 luồng phân công
     $sql = "
         SELECT 1 FROM phancong_doclap
-        WHERE idGV = $idGV AND idSanPham = $idSP AND idVongThi = $idVong
+        WHERE idGV = ? AND idSanPham = ? AND idVongThi = ?
         UNION
-        SELECT 1 FROM tieuban_giangvien tbg
+        SELECT 1
+        FROM tieuban_giangvien tbg
         JOIN tieuban_sanpham tbs ON tbg.idTieuBan = tbs.idTieuBan
         JOIN tieuban tb          ON tbg.idTieuBan = tb.idTieuBan
-        WHERE tbg.idGV     = $idGV
-          AND tbs.idSanPham = $idSP
-          AND tb.idVongThi  = $idVong
+        WHERE tbg.idGV     = ?
+          AND tbs.idSanPham = ?
+          AND tb.idVongThi  = ?
         LIMIT 1
     ";
 
-    $res = mysqli_query($conn, $sql);
-    return ($res && mysqli_num_rows($res) > 0);
+    $stmt = mysqli_prepare($conn, $sql);
+    if (!$stmt) return false;
+
+    // 6 params: 3 cho UNION phần 1, 3 cho phần 2
+    mysqli_stmt_bind_param($stmt, 'iiiiii', $idGV, $idSP, $idVong, $idGV, $idSP, $idVong);
+    mysqli_stmt_execute($stmt);
+    mysqli_stmt_store_result($stmt);
+
+    $found = mysqli_stmt_num_rows($stmt) > 0;
+    mysqli_stmt_close($stmt);
+
+    return $found;
 }
 
 
-//Hàm thêm layouts
-function layout($layout_name, $data = [])
+// ============================================================
+// PHẦN 3: HÀM TIỆN ÍCH
+// ============================================================
+
+/**
+ * Include layout template
+ */
+function layout(string $layout_name, array $data = []): void
 {
-    if (file_exists(_PATH_URL_TEMPLATES . '/layouts/' . $layout_name . '.php')) {
-        require_once(_PATH_URL_TEMPLATES . '/layouts/' . $layout_name . '.php');
+    $path = _PATH_URL_TEMPLATES . '/layouts/' . $layout_name . '.php';
+    if (file_exists($path)) {
+        require_once $path;
     }
 }
 
-//Kiểm tra phương thức Get
-function isGet()
+/** Kiểm tra request là GET */
+function isGet(): bool
 {
-    if ($_SERVER['REQUEST_METHOD'] === 'GET') {
-        return true;
-    }
-    return false;
+    return $_SERVER['REQUEST_METHOD'] === 'GET';
 }
 
-//Kiểm tra phương thức Post
-function isPost()
+/** Kiểm tra request là POST */
+function isPost(): bool
 {
-    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-        return true;
-    }
-    return false;
+    return $_SERVER['REQUEST_METHOD'] === 'POST';
 }
 
-//Hàm filter lọc dữ liệu
-function filter()
+/**
+ * Lọc toàn bộ input GET/POST — loại bỏ ký tự HTML đặc biệt
+ *
+ * ⚠️  Kết quả của filter() KHÔNG được nối thẳng vào SQL.
+ *     Mọi giá trị truyền vào DB phải qua Prepared Statement.
+ */
+function filter(): array
 {
-    $filterArr = [];
+    $out = [];
+
     if (isGet()) {
         foreach ($_GET as $key => $value) {
-            $filterArr[$key] = filter_input(INPUT_GET, $key, FILTER_SANITIZE_SPECIAL_CHARS);
+            $out[$key] = filter_input(INPUT_GET, $key, FILTER_SANITIZE_SPECIAL_CHARS);
         }
     }
+
     if (isPost()) {
         foreach ($_POST as $key => $value) {
-            $filterArr[$key] = filter_input(INPUT_POST, $key, FILTER_SANITIZE_SPECIAL_CHARS);
+            $out[$key] = filter_input(INPUT_POST, $key, FILTER_SANITIZE_SPECIAL_CHARS);
         }
     }
-    return $filterArr;
+
+    return $out;
+}
+
+/**
+ * @deprecated Không dùng cho code mới.
+ *
+ * Giữ lại để tránh crash các file cũ đang gọi hàm này.
+ * Trước đây escape trước khi nối chuỗi vào SQL — nay không cần
+ * vì đã dùng Prepared Statement. Chỉ trả về trim($str).
+ */
+function chuan_hoa_chuoi_sql($conn, string $str): string
+{
+    return trim($str);
 }
