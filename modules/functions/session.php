@@ -53,3 +53,39 @@ function getSessionFlash($key)
     removeSession($key);
     return $value;
 }
+
+function generateCSRF(): string
+{
+    if (empty($_SESSION['csrf_token'])) {
+        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+    }
+    return $_SESSION['csrf_token'];
+}
+
+// Validate CSRF token từ form POST
+function validateCSRF(): bool
+{
+    $token = $_POST['csrf_token'] ?? '';
+    if (empty($token) || empty($_SESSION['csrf_token'])) {
+        return false;
+    }
+    return hash_equals($_SESSION['csrf_token'], $token);
+}
+
+// In ra hidden input CSRF cho form
+// Dùng trong view: <?= csrfInput() 
+
+function csrfInput(): string
+{
+    $token = generateCSRF();
+    return '<input type="hidden" name="csrf_token" value="' . $token . '">';
+}
+
+// Chặn request nếu CSRF không hợp lệ
+function requireCSRF(): void
+{
+    if (!validateCSRF()) {
+        http_response_code(403);
+        die('Yêu cầu không hợp lệ. Vui lòng thử lại.');
+    }
+}
