@@ -13,29 +13,29 @@ $user_id = isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 1;
 // ======================
 // HÀM ĐỆ QUY XỬ LÝ CÂY LOGIC (TỪ UI -> DB)
 // ======================
-function parseRuleNode($conn, $node, $user_id) {
+function parseRuleNode($conn, $node, $user_id, $id_su_kien) {
     if ($node['type'] === 'rule') {
         $tenDK = "DK_DON_" . uniqid();
         $idTT = (int)$node['idThuocTinh'];
         $idToanTu = (int)$node['idToanTu'];
         $giaTri = $node['giaTri'];
         
-        $result = tao_dieu_kien_don($conn, $user_id, $tenDK, $idTT, $idToanTu, $giaTri);
+        $result = tao_dieu_kien_don($conn, $user_id, $id_su_kien, $tenDK, $idTT, $idToanTu, $giaTri);
         return $result['status'] ? $result['idDieuKien'] : null;
     } 
     elseif ($node['type'] === 'group') {
         $children = $node['children'] ?? [];
         if (empty($children)) return null;
-        if (count($children) === 1) return parseRuleNode($conn, $children[0], $user_id);
+        if (count($children) === 1) return parseRuleNode($conn, $children[0], $user_id, $id_su_kien);
 
         $logicId = (int)$node['logic'];
-        $leftId = parseRuleNode($conn, $children[0], $user_id);
+        $leftId = parseRuleNode($conn, $children[0], $user_id, $id_su_kien);
 
         for ($i = 1; $i < count($children); $i++) {
-            $rightId = parseRuleNode($conn, $children[$i], $user_id);
+            $rightId = parseRuleNode($conn, $children[$i], $user_id, $id_su_kien   );
             if ($leftId && $rightId) {
                 $tenToHop = "TOHOP_" . uniqid();
-                $resToHop = tao_to_hop_dieu_kien($conn, $user_id, $leftId, $logicId, $rightId, $tenToHop);
+                $resToHop = tao_to_hop_dieu_kien($conn, $user_id, $id_su_kien, $leftId, $logicId, $rightId, $tenToHop);
                 if ($resToHop['status']) {
                     $leftId = $resToHop['idDieuKien']; 
                 } else {
@@ -114,9 +114,9 @@ if (isPost()) {
                 $idQuyChe = $resQuyChe['idQuyChe'];
                 $treeData = json_decode($rulesJson, true);
                 if ($treeData) {
-                    $idDieuKienRoot = parseRuleNode($conn, $treeData, $user_id);
+                    $idDieuKienRoot = parseRuleNode($conn, $treeData, $user_id, $id_su_kien);
                     if ($idDieuKienRoot) {
-                        gan_dieu_kien_cho_quy_che($conn, $user_id, $idQuyChe, $idDieuKienRoot);
+                        gan_dieu_kien_cho_quy_che($conn, $user_id, $id_su_kien ,$idQuyChe, $idDieuKienRoot);
                     }
                 }
             } else {

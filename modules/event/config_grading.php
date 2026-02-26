@@ -27,18 +27,48 @@ if (isPost()) {
         $idVong = (int)($data['idVongThi'] ?? 0);
         mysqli_query($conn, "DELETE FROM phancong_doclap WHERE idSanPham = $idSP AND idGV = $idGV AND idVongThi = $idVong");
     }
-    // Logic: Duyệt & Chốt điểm (Bao gồm điểm tự động và điểm do BTC sửa tay)
+// Logic: Duyệt & Chốt điểm (Bao gồm điểm tự động và điểm do BTC sửa tay)
     elseif ($action === 'approve_score_manual' || $action === 'reject_score') {
         $idSP = (int)$data['idSanPham'];
         $idVong = (int)$data['idVongThi'];
         $diemTB = isset($data['diemChot']) ? (float)$data['diemChot'] : 0;
-        $trangThai = ($action === 'reject_score') ? 'Bị loại' : 'Đã duyệt';
+        
+        // Nếu BTC chủ động bấm "Đánh rớt", thì loại luôn không cần check quy chế
+        if ($action === 'reject_score') {
+            $chk = mysqli_query($conn, "SELECT 1 FROM sanpham_vongthi WHERE idSanPham = $idSP AND idVongThi = $idVong");
+            if (mysqli_num_rows($chk) > 0) {
+                mysqli_query($conn, "UPDATE sanpham_vongthi SET diemTrungBinh = $diemTB, trangThai = 'Bị loại' WHERE idSanPham = $idSP AND idVongThi = $idVong");
+            } else {
+                mysqli_query($conn, "INSERT INTO sanpham_vongthi (idSanPham, idVongThi, diemTrungBinh, trangThai) VALUES ($idSP, $idVong, $diemTB, 'Bị loại')");
+            }
+            $_SESSION['flash_msg'] = 'Đã đánh rớt bài thi thủ công!';
+            $_SESSION['flash_type'] = 'warning';
+        } 
+        // Nếu BTC bấm "Duyệt & Chốt" -> CẦN CHECK QUY CHẾ VÒNG THI
+        else {
+            // Bước 1: Lưu điểm tạm thời vào DB để Động cơ (Hàm lay_du_lieu_dong) có thể đọc được
+            $chk = mysqli_query($conn, "SELECT 1 FROM sanpham_vongthi WHERE idSanPham = $idSP AND idVongThi = $idVong");
+            if (mysqli_num_rows($chk) > 0) {
+                mysqli_query($conn, "UPDATE sanpham_vongthi SET diemTrungBinh = $diemTB, trangThai = 'Đang xét' WHERE idSanPham = $idSP AND idVongThi = $idVong");
+            } else {
+                mysqli_query($conn, "INSERT INTO sanpham_vongthi (idSanPham, idVongThi, diemTrungBinh, trangThai) VALUES ($idSP, $idVong, $diemTB, 'Đang xét')");
+            }
 
-        $chk = mysqli_query($conn, "SELECT 1 FROM sanpham_vongthi WHERE idSanPham = $idSP AND idVongThi = $idVong");
-        if (mysqli_num_rows($chk) > 0) {
-            mysqli_query($conn, "UPDATE sanpham_vongthi SET diemTrungBinh = $diemTB, trangThai = '$trangThai' WHERE idSanPham = $idSP AND idVongThi = $idVong");
-        } else {
-            mysqli_query($conn, "INSERT INTO sanpham_vongthi (idSanPham, idVongThi, diemTrungBinh, trangThai) VALUES ($idSP, $idVong, $diemTB, '$trangThai')");
+            // Bước 2: Gọi Động cơ Quy chế (Loại: VONGTHI)
+            require_once _PATH_URL . '/modules/functions/quan_ly_quy_che.php';
+            $doi_tuong_check = ['idSanPham' => $idSP, 'idVongThi' => $idVong];
+            $qua_vong = xet_duyet_quy_che_su_kien($conn, $id_su_kien, 'VONGTHI', $doi_tuong_check);
+
+            // Bước 3: Quyết định trạng thái cuối cùng
+            if ($qua_vong) {
+                mysqli_query($conn, "UPDATE sanpham_vongthi SET trangThai = 'Đã duyệt' WHERE idSanPham = $idSP AND idVongThi = $idVong");
+                $_SESSION['flash_msg'] = 'Đã chốt điểm và bài thi ĐẠT quy chế qua vòng!';
+                $_SESSION['flash_type'] = 'success';
+            } else {
+                mysqli_query($conn, "UPDATE sanpham_vongthi SET trangThai = 'Bị loại' WHERE idSanPham = $idSP AND idVongThi = $idVong");
+                $_SESSION['flash_msg'] = 'HỆ THỐNG CHẶN: Bài thi có điểm trung bình là '.$diemTB.' nhưng KHÔNG THỎA MÃN quy chế qua vòng. Đã tự động chuyển thành Bị loại!';
+                $_SESSION['flash_type'] = 'danger';
+            }
         }
         $current_tab = 2; 
     }

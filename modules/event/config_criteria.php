@@ -56,31 +56,29 @@ if (isPost()) {
         if (!empty($tenBo)) {
             
             if ($edit_id > 0) {
-                // TRƯỜNG HỢP: CẬP NHẬT BỘ CŨ
+                // CẬP NHẬT BỘ CŨ
                 $sql_update = "UPDATE botieuchi SET tenBoTieuChi = '" . chuan_hoa_chuoi_sql($conn, $tenBo) . "', moTa = '" . chuan_hoa_chuoi_sql($conn, $moTaBo) . "' WHERE idBoTieuChi = $edit_id";
                 mysqli_query($conn, $sql_update);
                 $idBoTieuChi = $edit_id;
 
                 // Xóa mapping Vòng thi cũ trong sự kiện này
                 mysqli_query($conn, "DELETE FROM cauhinh_tieuchi_sk WHERE idBoTieuChi = $idBoTieuChi AND idSK = $id_su_kien");
-                
-                // Xóa mapping tiêu chí con cũ (để chèn lại từ mảng mới)
                 mysqli_query($conn, "DELETE FROM botieuchi_tieuchi WHERE idBoTieuChi = $idBoTieuChi");
             } else {
-                // TRƯỜNG HỢP: TẠO BỘ MỚI
+                // TẠO BỘ MỚI
                 $sql_bo = "INSERT INTO botieuchi (tenBoTieuChi, moTa) 
                            VALUES ('" . chuan_hoa_chuoi_sql($conn, $tenBo) . "', '" . chuan_hoa_chuoi_sql($conn, $moTaBo) . "')";
                 mysqli_query($conn, $sql_bo);
                 $idBoTieuChi = mysqli_insert_id($conn);
             }
 
-            // Gán vào Vòng thi mới
+            // Gán vào Vòng thi (Nếu BTC chọn)
             if ($idBoTieuChi > 0 && $idVongThi > 0) {
                 mysqli_query($conn, "REPLACE INTO cauhinh_tieuchi_sk (idSK, idVongThi, idBoTieuChi) 
                                      VALUES ($id_su_kien, $idVongThi, $idBoTieuChi)");
             }
 
-            // Xử lý chèn danh sách Tiêu chí con (Dùng chung cho cả Thêm và Sửa)
+            // Xử lý chèn danh sách Tiêu chí con
             if (!empty($_POST['tieuchi_noidung']) && is_array($_POST['tieuchi_noidung'])) {
                 foreach ($_POST['tieuchi_noidung'] as $index => $noidung) {
                     $noidung = trim($noidung);
@@ -95,24 +93,19 @@ if (isPost()) {
                     $res_check = mysqli_query($conn, $sql_check);
                     
                     if ($res_check && mysqli_num_rows($res_check) > 0) {
-                        $row = mysqli_fetch_assoc($res_check);
-                        $idTieuChi = $row['idTieuChi'];
+                        $idTieuChi = mysqli_fetch_assoc($res_check)['idTieuChi'];
                     } else {
-                        $sql_tc = "INSERT INTO tieuchi (noiDungTieuChi) VALUES ('" . chuan_hoa_chuoi_sql($conn, $noidung) . "')";
-                        mysqli_query($conn, $sql_tc);
+                        mysqli_query($conn, "INSERT INTO tieuchi (noiDungTieuChi) VALUES ('" . chuan_hoa_chuoi_sql($conn, $noidung) . "')");
                         $idTieuChi = mysqli_insert_id($conn);
                     }
 
-                    // Chèn vào bảng cấu trúc Bộ
                     if ($idTieuChi > 0) {
-                        $sql_map = "INSERT INTO botieuchi_tieuchi (idBoTieuChi, idTieuChi, tyTrong, diemToiDa) 
-                                    VALUES ($idBoTieuChi, $idTieuChi, $tytrong, $diem_sql)";
-                        mysqli_query($conn, $sql_map);
+                        mysqli_query($conn, "INSERT INTO botieuchi_tieuchi (idBoTieuChi, idTieuChi, tyTrong, diemToiDa) 
+                                             VALUES ($idBoTieuChi, $idTieuChi, $tytrong, $diem_sql)");
                     }
                 }
             }
         }
-
         header("Location: ?module=event&action=config_criteria&id=$id_su_kien");
         exit;
     }
@@ -123,14 +116,29 @@ if (isPost()) {
 // ======================
 $vong_list = mysqli_query($conn, "SELECT * FROM vongthi WHERE idSK = $id_su_kien ORDER BY thuTu ASC");
 $nganhang_tc = mysqli_query($conn, "SELECT DISTINCT noiDungTieuChi FROM tieuchi ORDER BY noiDungTieuChi ASC");
-$bo_dropdown_list = mysqli_query($conn, "SELECT idBoTieuChi, tenBoTieuChi FROM botieuchi ORDER BY tenBoTieuChi ASC");
+$bo_list = mysqli_query($conn, "SELECT * FROM botieuchi ORDER BY idBoTieuChi DESC");
 
-$bo_list = mysqli_query($conn, "SELECT b.*, v.tenVongThi 
-                                FROM botieuchi b
-                                LEFT JOIN cauhinh_tieuchi_sk c ON b.idBoTieuChi = c.idBoTieuChi AND c.idSK = $id_su_kien
-                                LEFT JOIN vongthi v ON c.idVongThi = v.idVongThi
-                                WHERE c.idSK = $id_su_kien
-                                ORDER BY b.idBoTieuChi DESC");
+// TẠO BẢN ĐỒ SỬ DỤNG (USAGE MAP) ĐỂ SHOW LÊN GIAO DIỆN CHO BTC
+$usage_map = [];
+$sql_usage = "
+    SELECT idBoTieuChi, CONCAT('Dùng chung cho: ', v.tenVongThi) COLLATE utf8mb4_unicode_ci as noiDung, 'vong' COLLATE utf8mb4_unicode_ci as loai
+    FROM cauhinh_tieuchi_sk c
+    JOIN vongthi v ON c.idVongThi = v.idVongThi
+    WHERE c.idSK = $id_su_kien
+    UNION
+    SELECT idBoTieuChi, CONCAT('Tiểu ban: ', IFNULL(tenTieuBan, '')) COLLATE utf8mb4_unicode_ci, 'tieuban' COLLATE utf8mb4_unicode_ci as loai
+    FROM tieuban
+    WHERE idSK = $id_su_kien AND idBoTieuChi IS NOT NULL
+";
+$res_usage = mysqli_query($conn, $sql_usage);
+if ($res_usage) {
+    while ($row = mysqli_fetch_assoc($res_usage)) {
+        $usage_map[$row['idBoTieuChi']][] = [
+            'text' => $row['noiDung'],
+            'loai' => $row['loai']
+        ];
+    }
+}
 
 layout('header');
 layout('navbar');
@@ -161,7 +169,7 @@ layout('navbar');
                 <div class="input-group">
                     <select id="reuseSetDropdown" class="form-select">
                         <option value="">-- Chọn bộ tiêu chí để nhân bản --</option>
-                        <?php while ($bo_drop = mysqli_fetch_assoc($bo_dropdown_list)): ?>
+                        <?php mysqli_data_seek($bo_list, 0); while ($bo_drop = mysqli_fetch_assoc($bo_list)): ?>
                             <option value="<?php echo $bo_drop['idBoTieuChi']; ?>">
                                 <?php echo htmlspecialchars($bo_drop['tenBoTieuChi']); ?>
                             </option>
@@ -183,9 +191,9 @@ layout('navbar');
                         <input type="text" name="tenBoTieuChi" id="tenBoTieuChi" class="form-control" placeholder="Ví dụ: Phiếu chấm Vòng Bán Kết" required>
                     </div>
                     <div class="col-md-4">
-                        <label class="form-label fw-bold">Áp dụng cho Vòng thi</label>
+                        <label class="form-label fw-bold">Áp dụng chung cho Vòng thi</label>
                         <select name="idVongThi" id="idVongThi" class="form-select">
-                            <option value="0">-- Chưa gán (Lưu lại dùng sau) --</option>
+                            <option value="0">-- Chưa gán (Lưu lại dùng cho Tiểu ban sau) --</option>
                             <?php mysqli_data_seek($vong_list, 0); while ($row = mysqli_fetch_assoc($vong_list)) : ?>
                                 <option value="<?php echo $row['idVongThi']; ?>">
                                     <?php echo htmlspecialchars($row['tenVongThi']); ?>
@@ -234,32 +242,45 @@ layout('navbar');
         </div>
     </div>
 
-    <h4 class="mb-3">Bộ tiêu chí đang áp dụng cho Sự kiện này</h4>
+    <h4 class="mb-3">Ngân hàng Bộ tiêu chí</h4>
     <div class="row">
-        <?php if ($bo_list && mysqli_num_rows($bo_list) > 0): ?>
-            <?php while ($bo = mysqli_fetch_assoc($bo_list)): ?>
+        <?php if ($bo_list && mysqli_num_rows($bo_list) > 0): mysqli_data_seek($bo_list, 0); ?>
+            <?php while ($bo = mysqli_fetch_assoc($bo_list)): 
+                $dang_dung = $usage_map[$bo['idBoTieuChi']] ?? [];
+                $is_used_here = !empty($dang_dung);
+            ?>
                 <div class="col-md-6 mb-3">
-                    <div class="card h-100 border-0 shadow-sm border-start border-4 border-primary">
+                    <div class="card h-100 border-0 shadow-sm border-start border-4 <?= $is_used_here ? 'border-success' : 'border-secondary' ?>">
                         <div class="card-body">
                             <div class="d-flex justify-content-between align-items-start mb-2">
-                                <h5 class="card-title text-primary mb-0"><?php echo htmlspecialchars($bo['tenBoTieuChi']); ?></h5>
+                                <h5 class="card-title <?= $is_used_here ? 'text-success fw-bold' : 'text-secondary' ?> mb-0"><?php echo htmlspecialchars($bo['tenBoTieuChi']); ?></h5>
                                 <button class="btn btn-sm btn-outline-primary" onclick="editSet(<?php echo $bo['idBoTieuChi']; ?>)">
                                     <i class="bi bi-pencil-square me-1"></i> Sửa
                                 </button>
                             </div>
                             <p class="card-text text-muted small mb-2"><?php echo htmlspecialchars($bo['moTa'] ?: 'Không có mô tả'); ?></p>
-                            <?php if ($bo['tenVongThi']): ?>
-                                <span class="badge bg-success">Đang áp dụng: <?php echo htmlspecialchars($bo['tenVongThi']); ?></span>
-                            <?php else: ?>
-                                <span class="badge bg-secondary">Chưa gán vòng thi</span>
-                            <?php endif; ?>
+                            
+                            <div class="mt-3 pt-2 border-top">
+                                <?php if ($is_used_here): ?>
+                                    <span class="text-dark small fw-bold d-block mb-1"><i class="bi bi-link-45deg me-1"></i>Đang áp dụng tại:</span>
+                                    <div class="d-flex flex-wrap gap-1">
+                                    <?php foreach($dang_dung as $ud): ?>
+                                        <span class="badge <?= $ud['loai']=='tieuban' ? 'bg-info text-dark' : 'bg-success' ?> border rounded-pill fw-normal">
+                                            <?= htmlspecialchars($ud['text']) ?>
+                                        </span>
+                                    <?php endforeach; ?>
+                                    </div>
+                                <?php else: ?>
+                                    <span class="badge bg-light text-muted border rounded-pill fw-normal"><i class="bi bi-info-circle me-1"></i>Chưa gán trong sự kiện này</span>
+                                <?php endif; ?>
+                            </div>
                         </div>
                     </div>
                 </div>
             <?php endwhile; ?>
         <?php else: ?>
             <div class="col-12">
-                <div class="alert alert-info">Sự kiện này chưa có Bộ tiêu chí nào.</div>
+                <div class="alert alert-info">Hệ thống chưa có Bộ tiêu chí nào.</div>
             </div>
         <?php endif; ?>
     </div>
@@ -285,11 +306,9 @@ layout('navbar');
     }
 
     function removeRow(btn) {
-        const tr = btn.closest('tr');
-        tr.remove();
+        btn.closest('tr').remove();
     }
 
-    // --- HÀM AJAX: TẢI BỘ TIÊU CHÍ ĐỂ NHÂN BẢN (CLONE) ---
     function loadExistingSet() {
         const select = document.getElementById('reuseSetDropdown');
         const idBo = select.value;
@@ -297,9 +316,9 @@ layout('navbar');
         if (!idBo) return alert("Vui lòng chọn một Bộ tiêu chí!");
 
         fetch(`?module=event&action=config_criteria&id=<?php echo $id_su_kien; ?>&ajax_action=get_full_set&idBo=${idBo}`)
-            .then(response => response.json())
+            .then(res => res.json())
             .then(data => {
-                resetForm(); // Xóa trạng thái edit nếu đang có
+                resetForm(); 
                 if (data && data.details) {
                     document.getElementById('tenBoTieuChi').value = tenBoGoc.trim() + ' (Bản sao)';
                     document.getElementById('moTa').value = data.master.moTa || '';
@@ -314,30 +333,24 @@ layout('navbar');
             });
     }
 
-    // --- HÀM AJAX: TẢI BỘ TIÊU CHÍ ĐỂ CHỈNH SỬA (UPDATE) ---
     function editSet(idBo) {
         fetch(`?module=event&action=config_criteria&id=<?php echo $id_su_kien; ?>&ajax_action=get_full_set&idBo=${idBo}`)
-            .then(response => response.json())
+            .then(res => res.json())
             .then(data => {
                 if(data && data.master) {
-                    // Set các giá trị vào Form
                     document.getElementById('edit_id').value = idBo;
                     document.getElementById('tenBoTieuChi').value = data.master.tenBoTieuChi;
                     document.getElementById('moTa').value = data.master.moTa || '';
                     document.getElementById('idVongThi').value = data.master.idVongThi || 0;
                     
-                    // Render danh sách tiêu chí con
                     const tbody = document.querySelector('#criteriaTable tbody');
                     tbody.innerHTML = '';
                     if(data.details && data.details.length > 0) {
-                        data.details.forEach(item => {
-                            addCriteriaRow(item.noiDungTieuChi, item.diemToiDa, item.tyTrong);
-                        });
+                        data.details.forEach(item => addCriteriaRow(item.noiDungTieuChi, item.diemToiDa, item.tyTrong));
                     } else {
                         addCriteriaRow();
                     }
                     
-                    // Đổi giao diện UI sang chế độ Cập nhật
                     document.getElementById('formHeader').classList.replace('bg-primary', 'bg-warning');
                     document.getElementById('formHeader').classList.replace('text-white', 'text-dark');
                     document.getElementById('formTitle').innerHTML = '<i class="bi bi-pencil-square me-2"></i>Cập Nhật Phiếu Chấm Điểm';
@@ -345,15 +358,13 @@ layout('navbar');
                     document.getElementById('btnSubmit').innerHTML = '<i class="bi bi-check-circle me-1"></i>Lưu Cập Nhật';
                     document.getElementById('btnSubmit').classList.replace('btn-primary', 'btn-warning');
                     document.getElementById('btnCancelEdit').style.display = 'inline-block';
-                    document.getElementById('cloneToolBlock').style.display = 'none'; // Ẩn tool nhân bản khi đang sửa
+                    document.getElementById('cloneToolBlock').style.display = 'none';
                     
-                    // Cuộn lên form
                     document.getElementById('formCriteria').scrollIntoView({ behavior: 'smooth' });
                 }
             });
     }
 
-    // --- HÀM RESET FORM VỀ TRẠNG THÁI TẠO MỚI ---
     function resetForm() {
         document.getElementById('edit_id').value = '0';
         document.getElementById('tenBoTieuChi').value = '';
@@ -363,7 +374,6 @@ layout('navbar');
         document.querySelector('#criteriaTable tbody').innerHTML = '';
         addCriteriaRow();
         
-        // Trả UI về mặc định
         document.getElementById('formHeader').classList.replace('bg-warning', 'bg-primary');
         document.getElementById('formHeader').classList.replace('text-dark', 'text-white');
         document.getElementById('formTitle').innerHTML = '<i class="bi bi-clipboard-plus me-2"></i>Tạo Phiếu Chấm Điểm';
