@@ -1,40 +1,56 @@
 <?php
 if (!defined('_AUTHEN')) {
-  die('Truy cập không hợp lệ');
+    die('Truy cập không hợp lệ');
 }
+
+/**
+ * $conn được tạo trong db_connect.php, load bởi bootstrap (index.php).
+ * Khai báo global + docblock để IDE (Intelephense) nhận diện kiểu.
+ *
+ * @var mysqli $conn
+ */
+global $conn;
+
+// session.php được load trong bootstrap (index.php), require_once ở đây
+// để IDE nhận ra: csrfInput(), requireCSRF(), generateCSRF(), ...
+require_once _PATH_URL . '/modules/functions/session.php';
+
+// quan_ly_tai_khoan.php cung cấp hàm dang_nhap()
 require_once _PATH_URL . '/modules/functions/quan_ly_tai_khoan.php';
+
 // ==================== XỬ LÝ LOGIC ====================
 
-$tb_dang_nhap = "";
-$error_class  = "danger";
+$tb_dang_nhap = '';
+$error_class  = 'danger';
 
 // Xử lý đăng nhập Guest
 if (isset($_GET['guest']) && $_GET['guest'] == '1') {
-  $_SESSION['user_id']   = 0;
-  $_SESSION['user_name'] = 'Khách';
-  $_SESSION['role']      = 'guest';
+    $_SESSION['user_id']   = 0;
+    $_SESSION['user_name'] = 'Khách';
+    $_SESSION['role']      = 'guest';
 
-  if (isset($_GET['redirect']) && $_GET['redirect'] == 'event') {
-    header("Location: " . _HOST_URL . "?module=event&action=index");
-  } else {
-    header("Location: " . _HOST_URL . "?module=home&action=index");
-  }
-  exit();
+    if (isset($_GET['redirect']) && $_GET['redirect'] == 'event') {
+        header('Location: ' . _HOST_URL . '?module=event&action=index');
+    } else {
+        header('Location: ' . _HOST_URL . '?module=home&action=index');
+    }
+    exit();
 }
 
 // Xử lý đăng nhập thông thường
 if (isset($_POST['btn_dang_nhap'])) {
-  requireCSRF();
+    requireCSRF();
 
-  $result = dang_nhap($conn, $_POST['tenTK'] ?? '', $_POST['matKhau'] ?? '');
+    $result = dang_nhap($conn, $_POST['tenTK'] ?? '', $_POST['matKhau'] ?? '');
 
-  if ($result['status']) {
-    header("Location: " . _HOST_URL . "?module=home&action=index");
-    exit();
-  } else {
-    $tb_dang_nhap = $result['message'];
-  }
+    if ($result['status']) {
+        header('Location: ' . _HOST_URL . '?module=home&action=index');
+        exit();
+    } else {
+        $tb_dang_nhap = $result['message'];
+    }
 }
+
 // ==================== GIAO DIỆN ====================
 
 layout('header');
@@ -71,10 +87,10 @@ layout('navbar');
                         </div>
 
                         <!-- Thông báo lỗi -->
-                        <?php if ($tb_dang_nhap != ""): ?>
+                        <?php if ($tb_dang_nhap !== ''): ?>
                         <div class="alert alert-<?= $error_class ?> alert-dismissible fade show mb-4" role="alert"
                             data-aos="fade-up" data-aos-delay="250">
-                            <i class="bi bi-exclamation-circle me-2"></i><?= $tb_dang_nhap ?>
+                            <i class="bi bi-exclamation-circle me-2"></i><?= htmlspecialchars($tb_dang_nhap) ?>
                             <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                         </div>
                         <?php endif; ?>
@@ -111,7 +127,6 @@ layout('navbar');
                                     </a>
                                 </div>
                             </div>
-
                         </form>
 
                     </div>
