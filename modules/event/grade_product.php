@@ -2,226 +2,294 @@
 if (!defined('_AUTHEN')) die('Truy cập không hợp lệ');
 require_once _PATH_URL . '/modules/functions/base.php';
 
-// Giả định lấy ID Giảng viên từ Session (bạn tự chỉnh lại theo session thực tế của hệ thống nhé)
-$id_gv = $_SESSION['user_id'] ?? 1; // Mặc định là 1 để test
+$idSK = isset($_GET['idSK']) ? (int)$_GET['idSK'] : 0;
+$idSP = isset($_GET['idSP']) ? (int)$_GET['idSP'] : 0;
+$idVong = isset($_GET['idVong']) ? (int)$_GET['idVong'] : 0;
 
-$id_sp = isset($_GET['idSP']) ? (int)$_GET['idSP'] : 0;
-$id_vong = isset($_GET['idVong']) ? (int)$_GET['idVong'] : 0;
-$id_sk = isset($_GET['idSK']) ? (int)$_GET['idSK'] : 0;
-
-if ($id_sp == 0 || $id_vong == 0) {
-    die("Thiếu thông tin bài thi hoặc vòng thi!");
+// Lấy id Giám khảo từ session người dùng đăng nhập
+$user_id = $_SESSION['user_id'] ?? 0;
+$idGV = 0;
+$res_gv = mysqli_query($conn, "SELECT idGV FROM giangvien WHERE idTK = $user_id LIMIT 1");
+if ($res_gv && mysqli_num_rows($res_gv) > 0) {
+    $idGV = mysqli_fetch_assoc($res_gv)['idGV'];
 }
 
-// ==========================================
-// XỬ LÝ LƯU ĐIỂM (KHI GIẢNG VIÊN BẤM SUBMIT)
-// ==========================================
-if (isPost()) {
-    $data = filter();
-    $diem_array = $_POST['diem'] ?? [];
-    $nhanxet_array = $_POST['nhanXet'] ?? [];
-    $action = $data['action'] ?? 'draft'; // 'draft' (Lưu nháp) hoặc 'submit' (Chốt điểm)
+if ($idSK == 0 || $idSP == 0 || $idVong == 0 || $idGV == 0) {
+    die("<div class='alert alert-danger m-4'>Lỗi: Thiếu thông số hoặc bạn không phải là Giám khảo!</div>");
+}
 
-    $trangThaiXacNhan = ($action === 'submit') ? 'Đã xác nhận' : 'Đang chấm';
-    
-    // Lấy thời gian hiện tại để lưu vào DB tránh lỗi Field 'ngayXacNhan' doesn't have a default value
-    $ngayXacNhan = date('Y-m-d H:i:s');
+// ==============================================================================
+// THUẬT TOÁN SMART FALLBACK: TÌM BỘ TIÊU CHÍ CHUẨN XÁC CHO GIÁM KHẢO NÀY
+// ==============================================================================
+$idBoTieuChi_su_dung = null;
+$tenBoTieuChi_su_dung = '';
+$nguon_tieu_chi = '';
 
-    // 1. Kiểm tra xem đã có phiếu chấm trong bảng phancongcham chưa
-    // Cần biết idBoTieuChi đang dùng cho vòng này
-    $sql_btc = "SELECT idBoTieuChi FROM cauhinh_tieuchi_sk WHERE idSK = $id_sk AND idVongThi = $id_vong LIMIT 1";
-    $res_btc = mysqli_query($conn, $sql_btc);
-    $id_bo_tieu_chi = ($res_btc && mysqli_num_rows($res_btc) > 0) ? mysqli_fetch_assoc($res_btc)['idBoTieuChi'] : 1;
+// ƯU TIÊN 1: Kiểm tra xem GV có chấm bài này trong TIỂU BAN nào không?
+$sql_check_tieuban = "
+    SELECT tb.idBoTieuChi, tb.tenTieuBan, btc.tenBoTieuChi 
+    FROM tieuban tb
+    JOIN tieuban_giangvien tbg ON tb.idTieuBan = tbg.idTieuBan
+    JOIN tieuban_sanpham tbs ON tb.idTieuBan = tbs.idTieuBan
+    LEFT JOIN botieuchi btc ON tb.idBoTieuChi = btc.idBoTieuChi
+    WHERE tbg.idGV = $idGV AND tbs.idSanPham = $idSP AND tb.idVongThi = $idVong
+    LIMIT 1
+";
+$res_tb = mysqli_query($conn, $sql_check_tieuban);
 
-    $chk_pcc = mysqli_query($conn, "SELECT idPhanCongCham FROM phancongcham WHERE idGV = $id_gv AND idVongThi = $id_vong");
-    
-    if (mysqli_num_rows($chk_pcc) > 0) {
-        $id_pcc = mysqli_fetch_assoc($chk_pcc)['idPhanCongCham'];
-        // Đã bổ sung cập nhật ngayXacNhan
-        mysqli_query($conn, "UPDATE phancongcham SET trangThaiXacNhan = '$trangThaiXacNhan', ngayXacNhan = '$ngayXacNhan' WHERE idPhanCongCham = $id_pcc");
-    } else {
-        // Đã bổ sung ngayXacNhan vào câu lệnh INSERT
-        mysqli_query($conn, "INSERT INTO phancongcham (idGV, idSK, idVongThi, idBoTieuChi, trangThaiXacNhan, ngayXacNhan) 
-                             VALUES ($id_gv, $id_sk, $id_vong, $id_bo_tieu_chi, '$trangThaiXacNhan', '$ngayXacNhan')");
-        $id_pcc = mysqli_insert_id($conn);
+if ($res_tb && mysqli_num_rows($res_tb) > 0) {
+    $row_tb = mysqli_fetch_assoc($res_tb);
+    if (!empty($row_tb['idBoTieuChi'])) {
+        $idBoTieuChi_su_dung = $row_tb['idBoTieuChi']; 
+        $tenBoTieuChi_su_dung = $row_tb['tenBoTieuChi'];
+        $nguon_tieu_chi = "Tiêu chí riêng của " . $row_tb['tenTieuBan'];
     }
+}
 
-    // 2. Lưu điểm chi tiết vào bảng chamtieuchi
-    // Xóa điểm cũ của SP này do GK này chấm (để insert lại đồ mới)
-    mysqli_query($conn, "DELETE FROM chamtieuchi WHERE idPhanCongCham = $id_pcc AND idSanPham = $id_sp");
-
-    foreach ($diem_array as $idTieuChi => $diem) {
-        $diem_val = (float)$diem;
-        $nhanxet_val = isset($nhanxet_array[$idTieuChi]) ? chuan_hoa_chuoi_sql($conn, $nhanxet_array[$idTieuChi]) : '';
-        
-        mysqli_query($conn, "INSERT INTO chamtieuchi (idPhanCongCham, idSanPham, idTieuChi, diem, nhanXet) 
-                             VALUES ($id_pcc, $id_sp, $idTieuChi, $diem_val, '$nhanxet_val')");
+// ƯU TIÊN 2: Nếu không có Tiểu ban, Lùi về (Fallback) lấy Tiêu chí chung của VÒNG THI
+if (empty($idBoTieuChi_su_dung)) {
+    $sql_check_vong = "
+        SELECT c.idBoTieuChi, btc.tenBoTieuChi 
+        FROM cauhinh_tieuchi_sk c
+        JOIN botieuchi btc ON c.idBoTieuChi = btc.idBoTieuChi
+        WHERE c.idSK = $idSK AND c.idVongThi = $idVong LIMIT 1
+    ";
+    $res_vong = mysqli_query($conn, $sql_check_vong);
+    if ($res_vong && mysqli_num_rows($res_vong) > 0) {
+        $row_vong = mysqli_fetch_assoc($res_vong);
+        $idBoTieuChi_su_dung = $row_vong['idBoTieuChi'];
+        $tenBoTieuChi_su_dung = $row_vong['tenBoTieuChi'];
+        $nguon_tieu_chi = "Tiêu chí dùng chung cho Vòng thi";
     }
+}
 
-    $msg = ($action === 'submit') ? "Đã chốt điểm thành công!" : "Đã lưu nháp điểm!";
-    echo "<script>alert('$msg'); window.location.href='?module=event&action=grade_product&idSP=$id_sp&idVong=$id_vong&idSK=$id_sk';</script>";
+// CHẶN BẢO VỆ: Nếu BTC chưa cấu hình tiêu chí -> Dừng hệ thống
+if (empty($idBoTieuChi_su_dung)) {
+    layout('header'); layout('navbar');
+    echo "<div class='container py-5'><div class='alert alert-danger shadow-sm border-0 border-start border-5 border-danger'>
+          <h4 class='fw-bold'>Hệ thống chặn!</h4>
+          <p>Ban tổ chức chưa cấu hình Bộ tiêu chí chấm điểm cho vòng thi hoặc tiểu ban này. Vui lòng liên hệ BTC.</p>
+          <a href='javascript:history.back()' class='btn btn-outline-danger mt-2'>Quay lại</a>
+          </div></div>";
+    layout('footer');
     exit;
 }
 
-// ==========================================
-// TRUY VẤN DỮ LIỆU ĐỂ HIỂN THỊ FORM CHẤM
-// ==========================================
-// 1. Thông tin bài thi
-$sql_sp = "SELECT sp.tensanpham, n.manhom, ttn.tennhom FROM sanpham sp LEFT JOIN nhom n ON sp.idNhom = n.idnhom LEFT JOIN thongtinnhom ttn ON n.idnhom = ttn.idnhom WHERE sp.idSanPham = $id_sp";
-$sp_info = mysqli_fetch_assoc(mysqli_query($conn, $sql_sp));
+// ==============================================================================
+// KHỞI TẠO VÉ CHẤM ĐIỂM (BẢNG phancongcham)
+// ==============================================================================
+$idPhanCongCham = 0;
+$sql_check_pc = "SELECT idPhanCongCham, diemTong, nhanXet FROM phancongcham WHERE idGV = $idGV AND idSanPham = $idSP AND idVongThi = $idVong LIMIT 1";
+$res_pc = mysqli_query($conn, $sql_check_pc);
 
-// 2. Lấy danh sách tiêu chí dựa trên cấu hình của Vòng thi đó
-$sql_tc = "
-    SELECT tc.idTieuChi, tc.noiDungTieuChi, btt.diemToiDa 
-    FROM cauhinh_tieuchi_sk cts
-    JOIN botieuchi_tieuchi btt ON cts.idBoTieuChi = btt.idBoTieuChi
-    JOIN tieuchi tc ON btt.idTieuChi = tc.idTieuChi
-    WHERE cts.idSK = $id_sk AND cts.idVongThi = $id_vong
-";
-$res_tc = mysqli_query($conn, $sql_tc);
-$ds_tieuchi = $res_tc ? mysqli_fetch_all($res_tc, MYSQLI_ASSOC) : [];
-
-// 3. Lấy điểm cũ nếu Giám khảo đã từng lưu nháp
-$sql_old_scores = "
-    SELECT ctc.idTieuChi, ctc.diem, ctc.nhanXet, pcc.trangThaiXacNhan
-    FROM chamtieuchi ctc
-    JOIN phancongcham pcc ON ctc.idPhanCongCham = pcc.idPhanCongCham
-    WHERE pcc.idGV = $id_gv AND pcc.idVongThi = $id_vong AND ctc.idSanPham = $id_sp
-";
-$res_old = mysqli_query($conn, $sql_old_scores);
-$diem_cu = [];
-$trang_thai_cham = 'Chưa chấm';
-
-if ($res_old && mysqli_num_rows($res_old) > 0) {
-    while ($row = mysqli_fetch_assoc($res_old)) {
-        $diem_cu[$row['idTieuChi']] = [
-            'diem' => $row['diem'],
-            'nhanXet' => $row['nhanXet']
-        ];
-        $trang_thai_cham = $row['trangThaiXacNhan'];
-    }
+if ($res_pc && mysqli_num_rows($res_pc) > 0) {
+    $row_pc = mysqli_fetch_assoc($res_pc);
+    $idPhanCongCham = $row_pc['idPhanCongCham'];
+    $nhanXetCu = $row_pc['nhanXet'];
+} else {
+    // Nếu chưa có, tạo vé mới
+    mysqli_query($conn, "INSERT INTO phancongcham (idGV, idSanPham, idVongThi, diemTong) VALUES ($idGV, $idSP, $idVong, 0)");
+    $idPhanCongCham = mysqli_insert_id($conn);
+    $nhanXetCu = '';
 }
 
-$is_locked = ($trang_thai_cham === 'Đã xác nhận'); // Nếu đã chốt điểm thì khóa form không cho sửa nữa
+// ==============================================================================
+// XỬ LÝ LƯU ĐIỂM KHI GIÁM KHẢO SUBMIT FORM
+// ==============================================================================
+if (isPost()) {
+    $nhanXet = trim($_POST['nhanXet'] ?? '');
+    $diemTong = 0;
+
+    if (isset($_POST['diem_tieuchi']) && is_array($_POST['diem_tieuchi'])) {
+        foreach ($_POST['diem_tieuchi'] as $idTC => $diem) {
+            $diem = (float)$diem;
+            $tyTrong = (float)($_POST['tytrong_tieuchi'][$idTC] ?? 1.0);
+            
+            // Tính toán điểm có trọng số
+            $diemThucTe = $diem * $tyTrong;
+            $diemTong += $diemThucTe;
+
+            // Lưu vào bảng chamtieuchi
+            $check_ctc = mysqli_query($conn, "SELECT 1 FROM chamtieuchi WHERE idPhanCongCham = $idPhanCongCham AND idTieuChi = $idTC");
+            if (mysqli_num_rows($check_ctc) > 0) {
+                mysqli_query($conn, "UPDATE chamtieuchi SET diem = $diem WHERE idPhanCongCham = $idPhanCongCham AND idTieuChi = $idTC");
+            } else {
+                mysqli_query($conn, "INSERT INTO chamtieuchi (idPhanCongCham, idTieuChi, diem) VALUES ($idPhanCongCham, $idTC, $diem)");
+            }
+        }
+    }
+
+    // 1. Cập nhật Điểm tổng và Nhận xét cho Giám khảo
+    mysqli_query($conn, "UPDATE phancongcham SET diemTong = $diemTong, nhanXet = '".chuan_hoa_chuoi_sql($conn, $nhanXet)."', thoiGianCham = NOW() WHERE idPhanCongCham = $idPhanCongCham");
+
+    // 2. AUTO-CALCULATE: Tự động tính Lại ĐIỂM TRUNG BÌNH của Sản phẩm ở Vòng này
+    $sql_avg = "SELECT AVG(diemTong) as avgDiem FROM phancongcham WHERE idSanPham = $idSP AND idVongThi = $idVong AND diemTong > 0";
+    $res_avg = mysqli_query($conn, $sql_avg);
+    if ($res_avg && mysqli_num_rows($res_avg) > 0) {
+        $avg_score = (float)mysqli_fetch_assoc($res_avg)['avgDiem'];
+        
+        // Cập nhật vào bảng sanpham_vongthi để BTC xét duyệt
+        mysqli_query($conn, "UPDATE sanpham_vongthi SET diemTrungBinh = $avg_score WHERE idSanPham = $idSP AND idVongThi = $idVong");
+    }
+
+    $_SESSION['flash_msg'] = "Đã lưu điểm thành công! Tổng điểm của bạn: " . number_format($diemTong, 2);
+    $_SESSION['flash_type'] = "success";
+    header("Location: " . $_SERVER['REQUEST_URI']);
+    exit;
+}
+
+// ==============================================================================
+// TRUY VẤN DỮ LIỆU ĐỂ HIỂN THỊ LÊN FORM
+// ==============================================================================
+$sp_info = mysqli_fetch_assoc(mysqli_query($conn, "SELECT sp.tensanpham, n.manhom, ttn.tennhom FROM sanpham sp LEFT JOIN nhom n ON sp.idNhom = n.idnhom LEFT JOIN thongtinnhom ttn ON n.idnhom = ttn.idnhom WHERE sp.idSanPham = $idSP"));
+$vong_info = mysqli_fetch_assoc(mysqli_query($conn, "SELECT tenVongThi FROM vongthi WHERE idVongThi = $idVong"));
+
+// Lấy danh sách tiêu chí con và điểm đã chấm (nếu có)
+$sql_criteria = "
+    SELECT tc.idTieuChi, tc.noiDungTieuChi, bt.diemToiDa, bt.tyTrong, ctc.diem as diemDaCham
+    FROM botieuchi_tieuchi bt
+    JOIN tieuchi tc ON bt.idTieuChi = tc.idTieuChi
+    LEFT JOIN chamtieuchi ctc ON tc.idTieuChi = ctc.idTieuChi AND ctc.idPhanCongCham = $idPhanCongCham
+    WHERE bt.idBoTieuChi = $idBoTieuChi_su_dung
+";
+$criteria_list = mysqli_fetch_all(mysqli_query($conn, $sql_criteria), MYSQLI_ASSOC);
 
 layout('header'); layout('navbar');
 ?>
 
-<main class="main container py-4">
+<main class="container py-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2 class="fw-bold"><i class="bi bi-pencil-square text-primary me-2"></i>Chấm Điểm Bài Thi</h2>
-        <a href="?module=event&action=my_grading_tasks&id=<?php echo $id_sk; ?>" class="btn btn-outline-secondary"><i class="bi bi-arrow-left"></i> Danh sách bài được phân công</a>
+        <h2 class="fw-bold m-0"><i class="bi bi-pencil-square text-primary me-2"></i>Đánh giá Bài thi</h2>
+        <a href="?module=event&action=my_grading_tasks&id=<?=$idSK?>" class="btn btn-outline-secondary rounded-pill px-4">
+            <i class="bi bi-arrow-left"></i> Về danh sách nhiệm vụ
+        </a>
     </div>
 
-    <div class="card shadow-sm border-0 mb-4 border-start border-4 border-primary">
-        <div class="card-body">
-            <h4 class="text-primary fw-bold mb-1"><?=htmlspecialchars($sp_info['tensanpham'])?></h4>
-            <div class="text-muted"><i class="bi bi-people-fill me-1"></i> Nhóm thực hiện: <strong><?=htmlspecialchars($sp_info['tennhom'] ?: $sp_info['manhom'])?></strong></div>
-            
-            <div class="mt-3">
-                <span class="badge <?= $is_locked ? 'bg-success' : ($trang_thai_cham == 'Đang chấm' ? 'bg-warning text-dark' : 'bg-secondary') ?> px-3 py-2 fs-6">
-                    <i class="bi <?= $is_locked ? 'bi-check-circle-fill' : 'bi-clock-fill' ?> me-1"></i> Trạng thái: <?=$trang_thai_cham?>
-                </span>
+    <?php if(isset($_SESSION['flash_msg'])): ?>
+        <div class="alert alert-<?=$_SESSION['flash_type']?> alert-dismissible fade show shadow-sm border-0 border-start border-5 border-<?=$_SESSION['flash_type']?>">
+            <?=$_SESSION['flash_msg']?>
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+        <?php unset($_SESSION['flash_msg'], $_SESSION['flash_type']); ?>
+    <?php endif; ?>
+
+    <div class="row">
+        <div class="col-lg-4 mb-4">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-body bg-light rounded">
+                    <h5 class="fw-bold mb-3 border-bottom pb-2 text-dark">Thông tin bài thi</h5>
+                    <p class="mb-2"><span class="text-muted">Nhóm/Tác giả:</span> <br><span class="fw-bold fs-5 text-primary"><?=htmlspecialchars($sp_info['tennhom'] ?: $sp_info['manhom'] ?: 'Cá nhân')?></span></p>
+                    <p class="mb-2"><span class="text-muted">Tên đề tài:</span> <br><strong class="text-dark"><?=htmlspecialchars($sp_info['tensanpham'])?></strong></p>
+                    <p class="mb-2"><span class="text-muted">Vòng thi:</span> <br><span class="badge bg-secondary"><?=htmlspecialchars($vong_info['tenVongThi'])?></span></p>
+                    
+                    <div class="alert alert-info mt-4 border-0 shadow-sm">
+                        <i class="bi bi-info-circle-fill me-1"></i> Đang áp dụng:<br>
+                        <strong><?=htmlspecialchars($tenBoTieuChi_su_dung)?></strong><br>
+                        <small class="fst-italic">(<?=$nguon_tieu_chi?>)</small>
+                    </div>
+                </div>
             </div>
         </div>
-    </div>
 
-    <div class="card shadow-sm border-0">
-        <div class="card-header bg-white pt-3 pb-2 border-0">
-            <h5 class="fw-bold text-dark"><i class="bi bi-ui-checks me-2"></i>Bảng đánh giá theo Tiêu chí</h5>
-        </div>
-        <div class="card-body bg-light">
-            <?php if (empty($ds_tieuchi)): ?>
-                <div class="alert alert-warning">Ban tổ chức chưa cấu hình bộ tiêu chí cho vòng thi này. Bạn chưa thể chấm điểm!</div>
-            <?php else: ?>
-                <form method="post" id="formChamDiem">
-                    <div class="table-responsive bg-white shadow-sm rounded border mb-4">
-                        <table class="table table-bordered table-hover align-middle mb-0">
-                            <thead class="bg-primary text-white text-center">
-                                <tr>
-                                    <th width="5%">STT</th>
-                                    <th width="40%" class="text-start">Nội dung tiêu chí</th>
-                                    <th width="15%">Điểm tối đa</th>
-                                    <th width="15%">Điểm đánh giá</th>
-                                    <th width="25%">Nhận xét / Góp ý</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php 
-                                $stt = 1; 
-                                $tong_diem_max = 0;
-                                $tong_diem_cham = 0;
-                                foreach ($ds_tieuchi as $tc): 
-                                    $idTC = $tc['idTieuChi'];
-                                    $diemMax = (float)$tc['diemToiDa'];
-                                    $tong_diem_max += $diemMax;
-                                    
-                                    $diem_dat = isset($diem_cu[$idTC]) ? (float)$diem_cu[$idTC]['diem'] : '';
-                                    $nhan_xet = isset($diem_cu[$idTC]) ? htmlspecialchars($diem_cu[$idTC]['nhanXet']) : '';
-                                    if ($diem_dat !== '') $tong_diem_cham += $diem_dat;
-                                ?>
+        <div class="col-lg-8">
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-white border-bottom pt-3 pb-2">
+                    <h5 class="fw-bold m-0 text-dark"><i class="bi bi-list-check me-2 text-warning"></i>Phiếu Chấm Điểm</h5>
+                </div>
+                <div class="card-body p-4">
+                    <form method="post" id="gradingForm">
+                        <div class="table-responsive mb-4">
+                            <table class="table table-hover align-middle">
+                                <thead class="table-light">
                                     <tr>
-                                        <td class="text-center fw-bold"><?=$stt++?></td>
-                                        <td class="text-start fw-bold text-dark"><?=$tc['noiDungTieuChi']?></td>
-                                        <td class="text-center fw-bold text-secondary"><?=$diemMax?></td>
-                                        <td>
-                                            <input type="number" step="0.1" min="0" max="<?=$diemMax?>" 
-                                                   name="diem[<?=$idTC?>]" class="form-control text-center fw-bold text-primary diem-input" 
-                                                   value="<?=$diem_dat?>" required <?=$is_locked ? 'disabled' : ''?>>
-                                        </td>
-                                        <td>
-                                            <input type="text" name="nhanXet[<?=$idTC?>]" class="form-control" 
-                                                   placeholder="Nhập góp ý..." value="<?=$nhan_xet?>" <?=$is_locked ? 'disabled' : ''?>>
+                                        <th width="5%">STT</th>
+                                        <th width="45%">Nội dung tiêu chí</th>
+                                        <th width="15%" class="text-center">Trọng số</th>
+                                        <th width="15%" class="text-center">Tối đa</th>
+                                        <th width="20%" class="text-center">Điểm của bạn</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php 
+                                    $stt = 1; 
+                                    $sumMax = 0;
+                                    foreach ($criteria_list as $tc): 
+                                        $diemToiDa = $tc['diemToiDa'];
+                                        $sumMax += ($diemToiDa ? ($diemToiDa * $tc['tyTrong']) : 0);
+                                    ?>
+                                        <tr>
+                                            <td class="text-center fw-bold text-muted"><?=$stt++?></td>
+                                            <td><?=htmlspecialchars($tc['noiDungTieuChi'])?></td>
+                                            <td class="text-center">
+                                                <span class="badge bg-light text-dark border">x<?=$tc['tyTrong']?></span>
+                                                <input type="hidden" name="tytrong_tieuchi[<?=$tc['idTieuChi']?>]" value="<?=$tc['tyTrong']?>">
+                                            </td>
+                                            <td class="text-center text-secondary"><?= $diemToiDa ?: 'Không giới hạn' ?></td>
+                                            <td>
+                                                <input type="number" step="0.1" min="0" <?= $diemToiDa ? "max='{$diemToiDa}'" : "" ?> 
+                                                       name="diem_tieuchi[<?=$tc['idTieuChi']?>]" 
+                                                       class="form-control text-center fw-bold text-primary grading-input" 
+                                                       value="<?=$tc['diemDaCham']?>" required>
+                                            </td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                </tbody>
+                                <tfoot>
+                                    <tr class="table-light">
+                                        <td colspan="4" class="text-end fw-bold">Tổng điểm tự động tính:</td>
+                                        <td class="text-center">
+                                            <h4 class="m-0 fw-bold text-danger" id="liveTotalScore">0.00</h4>
+                                            <?php if($sumMax > 0): ?><small class="text-muted">/ <?=number_format($sumMax, 2)?></small><?php endif; ?>
                                         </td>
                                     </tr>
-                                <?php endforeach; ?>
-                            </tbody>
-                            <tfoot class="table-light">
-                                <tr>
-                                    <td colspan="2" class="text-end fw-bold text-uppercase">TỔNG CỘNG:</td>
-                                    <td class="text-center fw-bold fs-5"><?=$tong_diem_max?></td>
-                                    <td class="text-center fw-bold fs-5 text-danger" id="tongDiemCham"><?=$tong_diem_cham?></td>
-                                    <td></td>
-                                </tr>
-                            </tfoot>
-                        </table>
-                    </div>
+                                </tfoot>
+                            </table>
+                        </div>
 
-                    <?php if (!$is_locked): ?>
-                        <div class="d-flex justify-content-end gap-3 mt-4">
-                            <button type="submit" name="action" value="draft" class="btn btn-outline-primary fw-bold px-4 rounded-pill">
-                                <i class="bi bi-save me-1"></i> Lưu nháp (Chấm tiếp sau)
-                            </button>
-                            <button type="submit" name="action" value="submit" class="btn btn-success fw-bold px-5 rounded-pill" onclick="return confirm('Sau khi chốt điểm bạn sẽ không thể sửa lại được. Bạn có chắc chắn với kết quả này?');">
-                                <i class="bi bi-send-check-fill me-1"></i> Chốt Điểm Lên Hệ Thống
+                        <div class="mb-4">
+                            <label class="fw-bold text-dark mb-2">Nhận xét của Ban giám khảo:</label>
+                            <textarea name="nhanXet" rows="3" class="form-control" placeholder="Ghi chú điểm mạnh, điểm yếu của bài thi..."><?=htmlspecialchars($nhanXetCu ?? '')?></textarea>
+                        </div>
+
+                        <div class="text-end">
+                            <button type="submit" class="btn btn-primary rounded-pill px-5 py-2 fw-bold shadow-sm">
+                                <i class="bi bi-save me-2"></i> Lưu Điểm & Xác Nhận
                             </button>
                         </div>
-                    <?php else: ?>
-                        <div class="alert alert-success text-center fw-bold"><i class="bi bi-shield-lock-fill me-2"></i>Bạn đã chốt điểm cho bài thi này. Kết quả đã được gửi lên Hội đồng.</div>
-                    <?php endif; ?>
-                </form>
-            <?php endif; ?>
+                    </form>
+                </div>
+            </div>
         </div>
     </div>
 </main>
 
 <script>
-// Tự động tính tổng điểm khi Giám khảo gõ vào ô điểm
-document.addEventListener('DOMContentLoaded', function() {
-    const inputs = document.querySelectorAll('.diem-input');
-    const tongDiemEl = document.getElementById('tongDiemCham');
+    // Tính điểm live bằng Javascript cho Giám khảo dễ nhìn
+    document.addEventListener("DOMContentLoaded", function() {
+        const inputs = document.querySelectorAll('.grading-input');
+        const totalDisplay = document.getElementById('liveTotalScore');
 
-    inputs.forEach(input => {
-        input.addEventListener('input', function() {
-            let sum = 0;
-            inputs.forEach(inp => {
-                let val = parseFloat(inp.value);
-                if (!isNaN(val)) sum += val;
+        function calculateTotal() {
+            let total = 0;
+            inputs.forEach(input => {
+                let score = parseFloat(input.value) || 0;
+                // Lấy tyTrong từ thẻ input hidden ngay phía trên tr đó
+                let tr = input.closest('tr');
+                let tyTrongInput = tr.querySelector('input[name^="tytrong_tieuchi"]');
+                let tyTrong = parseFloat(tyTrongInput.value) || 1;
+                
+                total += (score * tyTrong);
             });
-            tongDiemEl.textContent = sum.toFixed(1);
+            totalDisplay.innerText = total.toFixed(2);
+        }
+
+        inputs.forEach(input => {
+            input.addEventListener('input', calculateTotal);
         });
+        
+        // Chạy lần đầu khi load form
+        calculateTotal();
     });
-});
 </script>
 
 <?php layout('footer'); ?>
