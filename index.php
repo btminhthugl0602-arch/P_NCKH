@@ -14,7 +14,6 @@ $allowed_modules = [
     'home',
     'auth',
     'event',
-    'users',
     'groups',
     'diemdanh',
     'profile',

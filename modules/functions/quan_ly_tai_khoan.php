@@ -34,13 +34,13 @@ function tao_tai_khoan_sinh_vien($conn, $id_tai_khoan, $ho_ten, $ma_so_sinh_vien
     if (!$result) throw new Exception('Không thể tạo hồ sơ sinh viên');
 }
 
-function tao_tai_khoan_giang_vien($conn, $id_tai_khoan, $ho_ten, $id_khoa)
+function tao_tai_khoan_giang_vien($conn, $id_tai_khoan, $ho_ten, $id_khoa, $hoc_ham = null)
 {
     $result = _insert_info(
         $conn,
         'GIANGVIEN',
-        ['idTK', 'tenGV', 'idKhoa'],
-        [$id_tai_khoan, $ho_ten, $id_khoa]
+        ['idTK', 'tenGV', 'idKhoa', 'hocHam'],
+        [$id_tai_khoan, $ho_ten, $id_khoa, $hoc_ham]
     );
 
     if (!$result) throw new Exception('Không thể tạo hồ sơ giảng viên');

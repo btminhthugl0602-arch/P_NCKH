@@ -122,7 +122,7 @@ function _gui_thong_bao_su_kien_moi($conn, $idSK, $ten_su_kien, $id_nguoi_tao)
     }
 }
 
-function btc_cap_nhat_su_kien($conn, $id_nguoi_thuc_hien, $id_su_kien, $ten_su_kien, $mo_ta, $id_cap, $ngay_mo_dk, $ngay_dong_dk, $ngay_bat_dau, $ngay_ket_thuc, $is_active)
+function btc_cap_nhat_su_kien($conn, $id_nguoi_thuc_hien, $id_su_kien, $ten_su_kien, $mo_ta, $id_cap, $ngay_mo_dk, $ngay_dong_dk, $ngay_bat_dau, $ngay_ket_thuc, $is_active, $che_do_dk_sv = 'MO', $che_do_dk_gv = 'MO', $so_nhom_toi_da_gvhd = null)
 {
     // Check quyền: BTC của sự kiện (cauhinh_sukien) HOẶC quyền hệ thống (tao_su_kien)
     $has_perm = kiem_tra_quyen_su_kien($conn, (int)$id_nguoi_thuc_hien, (int)$id_su_kien, 'cauhinh_sukien')
@@ -136,8 +136,8 @@ function btc_cap_nhat_su_kien($conn, $id_nguoi_thuc_hien, $id_su_kien, $ten_su_k
         return ['status' => false, 'message' => 'Sự kiện không tồn tại'];
     }
 
-    $fields = ['tenSK', 'moTa', 'idCap', 'ngayMoDangKy', 'ngayDongDangKy', 'ngayBatDau', 'ngayKetThuc', 'isActive'];
-    $values = [$ten_su_kien, $mo_ta, $id_cap, $ngay_mo_dk, $ngay_dong_dk, $ngay_bat_dau, $ngay_ket_thuc, $is_active];
+    $fields = ['tenSK', 'moTa', 'idCap', 'ngayMoDangKy', 'ngayDongDangKy', 'ngayBatDau', 'ngayKetThuc', 'isActive', 'cheDoDangKySV', 'cheDoDangKyGV', 'soNhomToiDaGVHD'];
+    $values = [$ten_su_kien, $mo_ta, $id_cap, $ngay_mo_dk, $ngay_dong_dk, $ngay_bat_dau, $ngay_ket_thuc, $is_active, $che_do_dk_sv, $che_do_dk_gv, $so_nhom_toi_da_gvhd];
 
     $conditions = ['idSK' => ['=', $id_su_kien, '']];
 

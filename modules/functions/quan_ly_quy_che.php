@@ -170,66 +170,100 @@ function gan_dieu_kien_cho_quy_che(
         : ['status' => false, 'message' => 'Không gán được điều kiện'];
 }
 
-function kiem_tra_dieu_kien(
-    $conn,
-    $id_dieu_kien,
-    $du_lieu_dau_vao
-) {
-    $dk = truy_van_mot_ban_ghi($conn, 'DIEUKIEN', 'idDieuKien', $id_dieu_kien);
+
+function kiem_tra_dieu_kien($conn, $id_dieu_kien, $id_doi_tuong) {
+    $dk = truy_van_mot_ban_ghi($conn, 'dieukien', 'idDieuKien', $id_dieu_kien);
     if (!$dk) return false;
 
-    if ($dk['loaiDieuKien'] == 'DON') {
-        return kiem_tra_dieu_kien_don($conn, $id_dieu_kien, $du_lieu_dau_vao);
-    }
-
-    if ($dk['loaiDieuKien'] == 'TOHOP') {
-        return kiem_tra_to_hop_dieu_kien($conn, $id_dieu_kien, $du_lieu_dau_vao);
-    }
-
+    if ($dk['loaiDieuKien'] == 'DON') return kiem_tra_dieu_kien_don($conn, $id_dieu_kien, $id_doi_tuong);
+    if ($dk['loaiDieuKien'] == 'TOHOP') return kiem_tra_to_hop_dieu_kien($conn, $id_dieu_kien, $id_doi_tuong);
     return false;
 }
 
-function kiem_tra_dieu_kien_don(
-    $conn,
-    $id_dieu_kien,
-    $du_lieu
-) {
-    $dk = truy_van_mot_ban_ghi($conn, 'DIEUKIEN_DON', 'idDieuKien', $id_dieu_kien);
+function kiem_tra_to_hop_dieu_kien($conn, $id_dieu_kien, $id_doi_tuong) {
+    $to_hop = truy_van_mot_ban_ghi($conn, 'tohop_dieukien', 'idDieuKien', $id_dieu_kien);
+    if (!$to_hop) return false;
+
+    $ket_qua_trai = kiem_tra_dieu_kien($conn, $to_hop['idDieuKienTrai'], $id_doi_tuong);
+    $ket_qua_phai = kiem_tra_dieu_kien($conn, $to_hop['idDieuKienPhai'], $id_doi_tuong);
+
+    $toan_tu = truy_van_mot_ban_ghi($conn, 'toantu', 'idToanTu', $to_hop['idToanTu']);
+    if (!$toan_tu) return false;
+
+    if (strtoupper($toan_tu['kyHieu']) == 'AND') return $ket_qua_trai && $ket_qua_phai;
+    if (strtoupper($toan_tu['kyHieu']) == 'OR') return $ket_qua_trai || $ket_qua_phai;
+    return false;
+}
+
+function kiem_tra_dieu_kien_don($conn, $id_dieu_kien, $id_doi_tuong) {
+    $dk = truy_van_mot_ban_ghi($conn, 'dieukien_don', 'idDieuKien', $id_dieu_kien);
     if (!$dk) return false;
 
-    $gia_tri_thuc_te = $du_lieu[$dk['idThuocTinhKiemTra']] ?? null;
+    $gia_tri_thuc_te = lay_du_lieu_dong($conn, $dk['idThuocTinhKiemTra'], $id_doi_tuong);
     $gia_tri_so_sanh = $dk['giaTriSoSanh'];
 
-    switch ($dk['idToanTu']) {
-        case 1: return $gia_tri_thuc_te == $gia_tri_so_sanh;
-        case 2: return $gia_tri_thuc_te > $gia_tri_so_sanh;
-        case 3: return $gia_tri_thuc_te < $gia_tri_so_sanh;
-        case 4: return $gia_tri_thuc_te >= $gia_tri_so_sanh;
-        case 5: return $gia_tri_thuc_te <= $gia_tri_so_sanh;
-        case 6: return $gia_tri_thuc_te != $gia_tri_so_sanh;
+    if ($gia_tri_thuc_te === null) return false; 
+
+    $toan_tu = truy_van_mot_ban_ghi($conn, 'toantu', 'idToanTu', $dk['idToanTu']);
+    if (!$toan_tu) return false;
+
+    $kyHieu = $toan_tu['kyHieu'];
+
+    if (is_numeric($gia_tri_thuc_te) && is_numeric($gia_tri_so_sanh)) {
+        $gia_tri_thuc_te = (float)$gia_tri_thuc_te;
+        $gia_tri_so_sanh = (float)$gia_tri_so_sanh;
+    } else {
+        $gia_tri_thuc_te = trim((string)$gia_tri_thuc_te);
+        $gia_tri_so_sanh = trim((string)$gia_tri_so_sanh);
+    }
+
+    switch ($kyHieu) {
+        case '=':  return $gia_tri_thuc_te == $gia_tri_so_sanh;
+        case '>':  return $gia_tri_thuc_te > $gia_tri_so_sanh;
+        case '<':  return $gia_tri_thuc_te < $gia_tri_so_sanh;
+        case '>=': return $gia_tri_thuc_te >= $gia_tri_so_sanh;
+        case '<=': return $gia_tri_thuc_te <= $gia_tri_so_sanh;
+        case '!=': return $gia_tri_thuc_te != $gia_tri_so_sanh;
         default: return false;
     }
 }
 
-function kiem_tra_to_hop_dieu_kien(
-    $conn,
-    $id_dieu_kien,
-    $du_lieu
-) {
-    $to_hop = truy_van_mot_ban_ghi($conn, 'TOHOP_DIEUKIEN', 'idDieuKien', $id_dieu_kien);
-    if (!$to_hop) return false;
+function lay_du_lieu_dong($conn, $idThuocTinh, $id_doi_tuong) {
+    $tt = truy_van_mot_ban_ghi($conn, 'thuoctinh_kiemtra', 'idThuocTinhKiemTra', $idThuocTinh);
+    if (!$tt) return null;
 
-    $ket_qua_trai = kiem_tra_dieu_kien($conn, $to_hop['idDieuKienTrai'], $du_lieu);
-    $ket_qua_phai = kiem_tra_dieu_kien($conn, $to_hop['idDieuKienPhai'], $du_lieu);
+    $bang = $tt['bangDuLieu'];
+    $truong = $tt['tenTruongDL'];
+    $loaiApDung = $tt['loaiApDung'];
 
-    if ($to_hop['idToanTu'] == 6) {
-        return $ket_qua_trai && $ket_qua_phai;
+    $sql = "";
+    if (($loaiApDung == 'THAMGIA_SV' || $loaiApDung == 'THAMGIA') && $bang == 'sinhvien') {
+        $idTK = (int)$id_doi_tuong;
+        $sql = "SELECT $truong FROM $bang WHERE idTK = $idTK LIMIT 1";
+    } 
+    elseif ($loaiApDung == 'SANPHAM' && $bang == 'sanpham') {
+        $idSP = (int)$id_doi_tuong;
+        $sql = "SELECT $truong FROM $bang WHERE idSanPham = $idSP LIMIT 1";
+    }
+    elseif ($loaiApDung == 'VONGTHI' && $bang == 'sanpham_vongthi') {
+         if (is_array($id_doi_tuong) && isset($id_doi_tuong['idSanPham']) && isset($id_doi_tuong['idVongThi'])) {
+             $idSP = (int)$id_doi_tuong['idSanPham'];
+             $idVT = (int)$id_doi_tuong['idVongThi'];
+             $sql = "SELECT $truong FROM $bang WHERE idSanPham = $idSP AND idVongThi = $idVT LIMIT 1"; 
+         }
+    }
+    elseif ($loaiApDung == 'GIAITHUONG' && $bang == 'ketqua') {
+        $idNhom = (int)$id_doi_tuong;
+        $sql = "SELECT $truong FROM $bang WHERE idNhom = $idNhom LIMIT 1";
     }
 
-    if ($to_hop['idToanTu'] == 7) {
-        return $ket_qua_trai || $ket_qua_phai;
+    if (empty($sql)) return null;
+
+    $res = mysqli_query($conn, $sql);
+    if ($res && mysqli_num_rows($res) > 0) {
+        $row = mysqli_fetch_assoc($res);
+        return $row[$truong];
     }
 
-    return false;
+    return null;
 }
-?>

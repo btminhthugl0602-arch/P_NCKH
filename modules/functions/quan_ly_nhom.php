@@ -755,3 +755,67 @@ function tim_kiem_sinh_vien($conn, $keyword): array
     mysqli_stmt_execute($stmt);
     return mysqli_fetch_all(mysqli_stmt_get_result($stmt), MYSQLI_ASSOC);
 }
+
+// ============================================================
+// QUẢN LÝ QUYỀN SỞ HỮU VÀ TRƯỞNG NHÓM (Đ1 schema v3)
+// ============================================================
+
+/**
+ * Chuyển nhượng quyền Chủ nhóm (idChuNhom) sang thành viên khác.
+ * Chỉ Chủ nhóm hiện tại mới được thực hiện.
+ */
+function chuyen_nhuong_chu_nhom($conn, int $id_nhom, int $id_chu_hien_tai, int $id_chu_moi): array
+{
+    // Kiểm tra người thực hiện đang là Chủ nhóm
+    $nhom = truy_van_mot_ban_ghi($conn, 'nhom', 'idnhom', $id_nhom);
+    if (!$nhom) {
+        return ['status' => false, 'message' => 'Nhóm không tồn tại'];
+    }
+    if ((int)$nhom['idChuNhom'] !== $id_chu_hien_tai) {
+        return ['status' => false, 'message' => 'Chỉ Chủ nhóm mới có thể chuyển nhượng'];
+    }
+    // Người nhận phải là thành viên active của nhóm
+    $stmt = mysqli_prepare($conn,
+        "SELECT 1 FROM thanhviennhom WHERE idnhom = ? AND idtk = ? AND trangthai = 1 LIMIT 1"
+    );
+    mysqli_stmt_bind_param($stmt, 'ii', $id_nhom, $id_chu_moi);
+    mysqli_stmt_execute($stmt);
+    $check = mysqli_stmt_get_result($stmt);
+    if (!$check || mysqli_num_rows($check) === 0) {
+        return ['status' => false, 'message' => 'Người nhận chưa là thành viên active của nhóm'];
+    }
+
+    $ok = _update_info($conn, 'nhom', ['idChuNhom'], [$id_chu_moi], ['idnhom' => ['=', $id_nhom, '']]);
+    return $ok
+        ? ['status' => true,  'message' => 'Chuyển nhượng Chủ nhóm thành công']
+        : ['status' => false, 'message' => 'Lỗi hệ thống khi chuyển nhượng'];
+}
+
+/**
+ * Chỉ định Trưởng nhóm (idTruongNhom) — do BTC thực hiện.
+ * idTruongNhom là đại diện SV trong vòng thi, không phải chủ sở hữu.
+ */
+function chi_dinh_truong_nhom($conn, int $id_su_kien, int $id_nguoi_thuc_hien, int $id_nhom, int $id_truong_moi): array
+{
+    // Kiểm tra quyền BTC
+    $has_perm = kiem_tra_quyen_su_kien($conn, $id_nguoi_thuc_hien, $id_su_kien, 'cauhinh_sukien')
+             || kiem_tra_quyen_he_thong($conn, $id_nguoi_thuc_hien, 'tao_su_kien');
+    if (!$has_perm) {
+        return ['status' => false, 'message' => 'Không đủ quyền chỉ định Trưởng nhóm'];
+    }
+    // Người được chỉ định phải là thành viên active của nhóm
+    $stmt = mysqli_prepare($conn,
+        "SELECT 1 FROM thanhviennhom WHERE idnhom = ? AND idtk = ? AND trangthai = 1 LIMIT 1"
+    );
+    mysqli_stmt_bind_param($stmt, 'ii', $id_nhom, $id_truong_moi);
+    mysqli_stmt_execute($stmt);
+    $check = mysqli_stmt_get_result($stmt);
+    if (!$check || mysqli_num_rows($check) === 0) {
+        return ['status' => false, 'message' => 'Người được chỉ định chưa là thành viên active của nhóm'];
+    }
+
+    $ok = _update_info($conn, 'nhom', ['idTruongNhom'], [$id_truong_moi], ['idnhom' => ['=', $id_nhom, '']]);
+    return $ok
+        ? ['status' => true,  'message' => 'Chỉ định Trưởng nhóm thành công']
+        : ['status' => false, 'message' => 'Lỗi hệ thống khi chỉ định'];
+}
