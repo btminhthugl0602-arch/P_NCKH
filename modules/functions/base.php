@@ -557,7 +557,7 @@ function kiem_tra_duoc_cham_bai($conn, int $idGV, int $idSP, int $idVong): bool
 // ============================================================
 
 /**
- * Include layout template
+ * Include layout template (header, footer, navbar...)
  */
 function layout(string $layout_name, array $data = []): void
 {
@@ -565,6 +565,68 @@ function layout(string $layout_name, array $data = []): void
     if (file_exists($path)) {
         require_once $path;
     }
+}
+
+/**
+ * Include page view từ template/pages/
+ * Controller truyền data xuống view qua $data array.
+ *
+ * Ví dụ:
+ *   page('auth/login', ['tb_dang_nhap' => $msg, 'error_class' => 'danger']);
+ *   page('event/view', ['event' => $event, 'nhom' => $nhom]);
+ */
+function page(string $page_name, array $data = []): void
+{
+    extract($data);
+    $path = _PATH_URL_TEMPLATES . '/pages/' . $page_name . '.php';
+    if (file_exists($path)) {
+        require $path;
+    } else {
+        error_log("page() không tìm thấy view: {$path}");
+    }
+}
+
+// ============================================================
+// PHẦN 4: LAZY SINGLETON — VAI TRÒ TỪ DB
+// ============================================================
+
+/**
+ * Lấy idvatro theo tenvaitro — query 1 lần, cache static.
+ * Thay thế cho constants hardcode (VAITRO_BTC, VAITRO_THAM_GIA...)
+ *
+ * Ví dụ: lay_id_vaitro($conn, 'BTC')  →  1
+ */
+function lay_id_vaitro($conn, string $ten): int
+{
+    static $cache = [];
+    if (empty($cache)) {
+        $rows = mysqli_query($conn, "SELECT idvatro, tenvaitro FROM vaitro");
+        if ($rows) {
+            while ($r = mysqli_fetch_assoc($rows)) {
+                $cache[$r['tenvaitro']] = (int)$r['idvatro'];
+            }
+        }
+    }
+    return $cache[$ten] ?? 0;
+}
+
+/**
+ * Lấy id vaitronhom theo tên — query 1 lần, cache static.
+ *
+ * Ví dụ: lay_id_vaitronhom($conn, 'Trưởng nhóm')  →  1
+ */
+function lay_id_vaitronhom($conn, string $ten): int
+{
+    static $cache = [];
+    if (empty($cache)) {
+        $rows = mysqli_query($conn, "SELECT id, tenvaitronhom FROM vaitronhom");
+        if ($rows) {
+            while ($r = mysqli_fetch_assoc($rows)) {
+                $cache[$r['tenvaitronhom']] = (int)$r['id'];
+            }
+        }
+    }
+    return $cache[$ten] ?? 0;
 }
 
 /** Kiểm tra request là GET */
